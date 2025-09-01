@@ -42,6 +42,7 @@ extension MyService: TargetType {
             return "v1/shapes"
             // *** UNCOMMENT TO USE APPROOV
 //            return "v3/shapes"
+//*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
 //          return "v5/shapes/"
         }
     }

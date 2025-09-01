@@ -143,7 +143,7 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
 ```swift
 //*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-// let currentShapesEndpoint = "v5"
+//            return "v5/shapes"
 ```
 
  2. Uncomment the message signing setup code in `ViewController.swift`. This adds an interceptor extension to the ApproovService which adds the message signature to the request automatically.
