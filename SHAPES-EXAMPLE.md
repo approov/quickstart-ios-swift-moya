@@ -182,10 +182,9 @@ The `apiSecretKey` variable also needs to be changed as follows, removing the ac
 
 ```swift
 // *** COMMENT IF USING APPROOV SECRETS PROTECTION
-//let apiSecretKey = "yXClypapWNHIifHUWmBIyPFAm"
-
-// *** UNCOMMENT IF USING APPROOV SECRETS PROTECTION
-let apiSecretKey = "shapes_api_key_placeholder"
+                ,"Api-Key" : "yXClypapWNHIifHUWmBIyPFAm"
+                // *** UNCOMMENT IF USING APPROOV SECRETS PROTECTION
+//                ,"Api-Key" : "shapes_api_key_placeholder"
 ```
 
 You must inform Approov that it should map `shapes_api_key_placeholder` to `yXClypapWNHIifHUWmBIyPFAm` (the actual API key) in requests as follows:

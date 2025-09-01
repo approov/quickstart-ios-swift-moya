@@ -28,7 +28,10 @@ extension MyService: TargetType {
     
     var headers: [String : String]? {
         return ["Content-type" : "application/json"
+                // *** COMMENT IF USING APPROOV SECRETS PROTECTION
                 ,"Api-Key" : "yXClypapWNHIifHUWmBIyPFAm"
+                // *** UNCOMMENT IF USING APPROOV SECRETS PROTECTION
+//                ,"Api-Key" : "shapes_api_key_placeholder"
         ]
     }
     

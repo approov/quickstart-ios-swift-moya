@@ -31,7 +31,7 @@ class ViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        // *** COMMENT OUT IF USING APPROOV
                 provider = MoyaProvider<MyService>();
         
         // *** UNCOMMENT TO USE APPROOV
