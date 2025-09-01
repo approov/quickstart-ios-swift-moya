@@ -1,6 +1,8 @@
 
-# AlamoFire Options
-This provides some other options available with the AlamoFire networking stack.
+# Moya Options
+This provides some other options available with the Moya networking stack. As Moya just provides an abstraction layer, inorder to access the Alomafire features, you will have to set the provider options found [here](https://github.com/Moya/Moya/blob/master/docs/Providers.md). 
+
+The rest of the sections here outline how to modify the session in Alomafire.
 
 ## Network Retry Options
 The `ApproovInterceptor` class implements Alamofire's Interceptor protocol which includes an option to invoke a retry attempt in case the original request failed. We do not implement the retry option in `ApproovInterceptor`, but if you require implementing one, you should mimic the contents of the `adapt()` function and perhaps add some logic regarding retry attempts. See an example [here](https://github.com/Alamofire/Alamofire/blob/master/Documentation/AdvancedUsage.md#adapting-and-retrying-requests-with-requestinterceptor).

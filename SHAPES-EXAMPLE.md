@@ -9,9 +9,9 @@ This quickstart is written specifically for native iOS apps that are written in 
 * An Apple mobile device or simulator with iOS 12 or higher
 * The contents of this repo
 
-## ALAMOFIRE FRAMEWORK
+## MOYA FRAMEWORK
  
-We include [Alamofire](https://github.com/Alamofire/Alamofire) as a `swift package manager` dependency in our project.
+We include [Moya](https://github.com/Moya/Moya) as a `swift package manager` dependency in our project.
  
 ## RUN THE SHAPES APP WITHOUT APPROOV
 
@@ -88,11 +88,8 @@ Replace `<enter-you-config-string-here>"` with the actual configuration string f
 Lastly, make sure we are using the Approov protected endpoint for the shapes server, `https://shapes.approov.io/v3/shapes/`. Uncomment the line below (commenting out the previous definition):
 
 ```swift
-// *** COMMENT OUT IF USING APPROOV API PROTECTION
-//static let currentShapesEndpoint = "v1"
-
-// *** UNCOMMENT IF USING APPROOV API PROTECTION
-static let currentShapesEndpoint = "v3"
+            // *** UNCOMMENT TO USE APPROOV
+//            return "v3/shapes"
 ```
 
 ## ADD YOUR SIGNING CERTIFICATE TO APPROOV
@@ -146,7 +143,7 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
 ```swift
 //*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-let currentShapesEndpoint = "v5"
+// let currentShapesEndpoint = "v5"
 ```
 
  2. Uncomment the message signing setup code in `ViewController.swift`. This adds an interceptor extension to the ApproovService which adds the message signature to the request automatically.
@@ -177,7 +174,8 @@ ApproovService.setApproovInterceptorExtensions(
 This section provides an illustration of an alternative option for Approov protection if you are not able to modify the backend to add an Approov Token check. We are going to be using `https://shapes.approov.io/v1/shapes/` that simply checks for an API key. Change back the code so it points to `https://shapes.approov.io/v1/shapes/`.
 
 ```swift
-static let currentShapesEndpoint = "v1"
+        case .Shape:
+            return "v1/shapes"
 ```
 
 The `apiSecretKey` variable also needs to be changed as follows, removing the actual API key out of the code. Uncomment the line containing `"shapes_api_key_placeholder"` (commenting the previous definition):
