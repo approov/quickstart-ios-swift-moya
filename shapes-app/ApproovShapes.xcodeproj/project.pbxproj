@@ -11,7 +11,6 @@
 		25EE48CC2E607FC0008E2FA0 /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = 25EE48CB2E607FC0008E2FA0 /* Moya */; };
 		25EE48D42E609B37008E2FA0 /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = 25EE48D32E609B37008E2FA0 /* Moya */; };
 		25EE48DC2E60A443008E2FA0 /* Moya in Frameworks */ = {isa = PBXBuildFile; productRef = 25EE48DB2E60A443008E2FA0 /* Moya */; };
-		25EE48DF2E60A5B0008E2FA0 /* ApproovSession in Frameworks */ = {isa = PBXBuildFile; productRef = 25EE48DE2E60A5B0008E2FA0 /* ApproovSession */; };
 		846743E721EFD27A00EEE48A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 846743E621EFD27A00EEE48A /* Assets.xcassets */; };
 		8475651821EFCC4A0094ED94 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8475651721EFCC4A0094ED94 /* AppDelegate.swift */; };
 		8475651A21EFCC4A0094ED94 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8475651921EFCC4A0094ED94 /* ViewController.swift */; };
@@ -49,7 +48,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				25EE48D42E609B37008E2FA0 /* Moya in Frameworks */,
-				25EE48DF2E60A5B0008E2FA0 /* ApproovSession in Frameworks */,
 				25EE48DC2E60A443008E2FA0 /* Moya in Frameworks */,
 				25EE48CC2E607FC0008E2FA0 /* Moya in Frameworks */,
 			);
@@ -109,7 +107,6 @@
 				25EE48CB2E607FC0008E2FA0 /* Moya */,
 				25EE48D32E609B37008E2FA0 /* Moya */,
 				25EE48DB2E60A443008E2FA0 /* Moya */,
-				25EE48DE2E60A5B0008E2FA0 /* ApproovSession */,
 			);
 			productName = "shapes-client";
 			productReference = 8475651421EFCC4A0094ED94 /* ApproovShapes.app */;
@@ -143,7 +140,6 @@
 			mainGroup = 8475650B21EFCC4A0094ED94;
 			packageReferences = (
 				25EE48DA2E60A443008E2FA0 /* XCRemoteSwiftPackageReference "Moya" */,
-				25EE48DD2E60A5B0008E2FA0 /* XCRemoteSwiftPackageReference "approov-service-alamofire" */,
 			);
 			productRefGroup = 8475651521EFCC4A0094ED94 /* Products */;
 			projectDirPath = "";
@@ -327,9 +323,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = S9XBYKB8L4;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -360,9 +356,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = S9XBYKB8L4;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -419,14 +415,6 @@
 				minimumVersion = 15.0.3;
 			};
 		};
-		25EE48DD2E60A5B0008E2FA0 /* XCRemoteSwiftPackageReference "approov-service-alamofire" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/approov/approov-service-alamofire.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.5.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -442,11 +430,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 25EE48DA2E60A443008E2FA0 /* XCRemoteSwiftPackageReference "Moya" */;
 			productName = Moya;
-		};
-		25EE48DE2E60A5B0008E2FA0 /* ApproovSession */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 25EE48DD2E60A5B0008E2FA0 /* XCRemoteSwiftPackageReference "approov-service-alamofire" */;
-			productName = ApproovSession;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
