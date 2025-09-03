@@ -1,6 +1,6 @@
 # Approov Quickstart: iOS Swift Moya
 
-This quickstart is written specifically for native iOS apps that are written in Swift and using [Moya](https://github.com/Moya/Moya) for making the API calls that you wish to protect with Approov. If this is not your situation then check if there is a more relevant quickstart guide available.
+This quickstart is written specifically for native iOS apps that are written in Swift and use [Moya](https://github.com/Moya/Moya) for making API calls that you wish to protect with Approov. If this is not your situation then check if there is a more relevant quickstart guide available.
 
 This page provides all the steps for integrating Approov into your app. Additionally, a step-by-step tutorial guide using our [Shapes App Example](https://github.com/approov/quickstart-ios-swift-moya/blob/master/SHAPES-EXAMPLE.md) is also available.
 

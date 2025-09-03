@@ -1,6 +1,6 @@
 
 # Moya Options
-This provides some other options available with the Moya networking stack. As Moya just provides an abstraction layer, inorder to access the Alomafire features, you will have to set the provider options found [here](https://github.com/Moya/Moya/blob/master/docs/Providers.md). 
+This provides some other options available with the Moya networking stack. As Moya just provides an abstraction layer, in order to access the Alomafire features, you will have to set the provider options found [here](https://github.com/Moya/Moya/blob/master/docs/Providers.md). 
 
 The rest of the sections here outline how to modify the session in Alomafire.
 
