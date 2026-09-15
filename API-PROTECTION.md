@@ -54,7 +54,7 @@ If it is not possible to download the correct certificate from the portal then i
  If you are using the `ApproovService` networking stack, then Approov can automatically generate and add the message signature. You should use this method whenever possible. You enable this by making the following call once, after initialization:
 
  ```swift
-ApproovService.setApproovInterceptorExtensions(
+ApproovService.setServiceMutator(
     ApproovDefaultMessageSigning().setDefaultFactory(
         ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
 ```

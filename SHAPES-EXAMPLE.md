@@ -5,8 +5,8 @@ This quickstart is written specifically for native iOS apps that are written in 
 ## WHAT YOU WILL NEED
 * Access to a trial or paid Approov account
 * The `approov` command line tool [installed](https://approov.io/docs/latest/approov-installation/) with access to your account
-* [Xcode](https://developer.apple.com/xcode/) installed (version 16.4 is used in this guide)
-* An Apple mobile device or simulator with iOS 12 or higher
+* [Xcode](https://developer.apple.com/xcode/) installed (version 26.4 / Swift 6.4 is used for the checked-in dependency resolution)
+* An Apple mobile device or simulator with iOS 15 or higher
 * The contents of this repo
 
 ## MOYA FRAMEWORK
@@ -45,13 +45,7 @@ The subsequent steps of this guide show you how to provide better protection, ei
 
 ## ADD THE APPROOV SERVICE ALAMOFIRE
 
-The Approov integration is available via the [`Swift Package Manager`](https://developer.apple.com/documentation/swift_packages/adding_package_dependencies_to_your_app). This allows inclusion into the project by simply specifying a dependency in the `File -> Add Packages...` Xcode option if the project is selected:
-
-![Add Package Dependency](readme-images/add-package-repository.png)
-
-Enter the repository `https://github.com/approov/approov-service-alamofire.git` into the search box. You will then have to select the relevant version you wish to use. To do so, select the `Exact Version` option and the latest version available should be selected for you.
-
-Once you click `Add Package` the last screen will confirm the package product and target selection. The `approov-service-alamofire` and Approov SDK are now included as a dependency in your project. The `approov-service-alamofire` is actually an open source wrapper layer that allows you to easily use the Approov SDK itself with Alamofire.  This has a further dependency to the closed source [Approov SDK](https://github.com/approov/approov-ios-sdk).
+The sample already pins `approov-service-alamofire` **3.5.6** and Moya **15.0.3**. Do not add duplicate package references. The SwiftPM product and Swift import are `ApproovAFSession`; the networking class is `ApproovSession`. See [dependency setup](README.md#adding-approov-service-dependency) when integrating into another application.
 
 ## ENSURE THE SHAPES API IS ADDED
 
@@ -65,32 +59,17 @@ Tokens for this domain will be automatically signed with the specific secret for
 
 ## MODIFY THE APP TO USE APPROOV
 
-Before using Approov you need to import the Alamofire Service. In the `ViewController.swift` source file uncomment the line to import the service module:
+Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's SDK configuration string. Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state, logs a correlation ID and device ID, and handles initialization failure by entering explicit bypass mode. In bypass mode the backend must reject requests without valid Approov proof.
+
+The sample already passes an `ApproovSession(startRequestsImmediately: false)` to its Moya provider. No import or provider code needs uncommenting.
+
+In `MyService.swift`, change the `.Shape` path from `v1/shapes` to:
 
 ```swift
-// *** UNCOMMENT IF USING APPROOV
-import ApproovSession
+return "v3/shapes"
 ```
 
-Find the function definition for `viewDidLoad()` in the `ViewController.swift` source file. Uncomment the code below (and remember to comment the previous version):
-
-```swift
-// *** COMMENT OUT IF USING APPROOV
-//session = Session()
-
-// *** UNCOMMENT TO USE APPROOV
-session = ApproovSession()
-try! ApproovService.initialize(config: "<enter-you-config-string-here>")
-```
-
-Replace `<enter-you-config-string-here>"` with the actual configuration string for your account. You will have received this in your Approov onboarding email (it will be something like `#12456#K/XPlLtfcwnWkzv99Wj5VmAxo4CrU267J1KlQyoz8Qo=`). The `ApproovSession` class adds the `Approov-Token` header and also applies pinning for the connections to ensure that no Man-in-the-Middle can eavesdrop on any communication being made.
-
-Lastly, make sure we are using the Approov protected endpoint for the shapes server, `https://shapes.approov.io/v3/shapes/`. Uncomment the line below (commenting out the previous definition):
-
-```swift
-            // *** UNCOMMENT TO USE APPROOV
-//            return "v3/shapes"
-```
+The v3 endpoint requires a valid Approov token. Leaving the v1 path selected tests only the public demo API key. The embedded key belongs to the public Shapes demonstration; never embed your production API credentials this way.
 
 ## ADD YOUR SIGNING CERTIFICATE TO APPROOV
 
@@ -139,18 +118,18 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
  This section shows how to add message signing as an additional layer of protection in addition to an Approov token.
 
-1. Make sure we are using the `https://shapes.approov.io/v5/shapes/` endpoint of the shapes server. The v5 endpoint performs a message signature check in addition to the Approov token check. Find the following line in the `ViewController.swift`  source file and uncomment it to point to `v5` (commenting the previous definitions):
+1. Make sure we are using the `https://shapes.approov.io/v5/shapes/` endpoint of the shapes server. The v5 endpoint performs a message signature check in addition to the Approov token check. Find the following line in the `MyService.swift`  source file and uncomment it to point to `v5` (commenting the previous definitions):
 
 ```swift
 //*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
 //            return "v5/shapes"
 ```
 
- 2. Uncomment the message signing setup code in `ViewController.swift`. This adds an interceptor extension to the ApproovService which adds the message signature to the request automatically.
+ 2. Uncomment the message signing setup code in `ShapesNetworking.swift`. This adds a service mutator to the ApproovService which adds the message signature to the request automatically.
 
 ```swift
 //*** UNCOMMENT THE LINES BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-ApproovService.setApproovInterceptorExtensions(
+ApproovService.setServiceMutator(
     ApproovDefaultMessageSigning().setDefaultFactory(
         ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
 ```
@@ -178,7 +157,7 @@ This section provides an illustration of an alternative option for Approov prote
             return "v1/shapes"
 ```
 
-The `apiSecretKey` variable also needs to be changed as follows, removing the actual API key out of the code. Uncomment the line containing `"shapes_api_key_placeholder"` (commenting the previous definition):
+The `Api-Key` header in `MyService.swift` also needs to be changed as follows, removing the actual API key out of the code. Uncomment the line containing `"shapes_api_key_placeholder"` (commenting the previous definition):
 
 ```swift
 // *** COMMENT IF USING APPROOV SECRETS PROTECTION
@@ -195,7 +174,7 @@ approov secstrings -addKey shapes_api_key_placeholder -predefinedValue yXClypapW
 
 > Note that this command requires an [admin role](https://approov.io/docs/latest/approov-usage-documentation/#account-access-roles).
 
-Next we need to inform Approov that it needs to substitute the placeholder value for the real API key on the `Api-Key` header. Find the line below and uncomment it:
+Next we need to inform Approov that it needs to substitute the placeholder value for the real API key on the `Api-Key` header. In `ShapesNetworking.swift`, find the line below and uncomment it after initialization:
 
 ```swift
 // *** UNCOMMENT IF USING APPROOV SECRETS PROTECTION
@@ -211,3 +190,7 @@ Build and run the app and press the `Shape` button. You should now see this (or 
 </p>
 
 This means that the app is able to access the API key, even though it is no longer embedded in the app code, and provide it to the shapes request.
+
+## RELEASE VALIDATION
+
+Complete [TESTING.md](TESTING.md) before release. Remove force-pass rules and development keys from the test device/account before recording the production-policy result. The screenshots above illustrate the walkthrough; they are not evidence that the current dependency set passed device attestation.

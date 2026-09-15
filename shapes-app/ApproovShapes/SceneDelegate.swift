@@ -16,17 +16,7 @@
 
 import UIKit
 
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Initialize once, before a view can create a Moya provider.
-        let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
-        do {
-            try ShapesNetworking.initialize(config: config)
-        } catch {
-            NSLog("Approov initialization and bypass setup failed; networking is unavailable.")
-        }
-        return true
-    }
+    var window: UIWindow?
 }

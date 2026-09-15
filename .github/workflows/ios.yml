@@ -1,0 +1,36 @@
+name: iOS build and tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Test the sample on iOS Simulator
+        run: |
+          xcodebuild -version
+          xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
+            -scheme ApproovShapes \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' \
+            -derivedDataPath build -resultBundlePath TestResults.xcresult \
+            -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- test
+      - name: Build Release for iOS devices
+        run: |
+          xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
+            -scheme ApproovShapes -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO build
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-test-results
+          path: TestResults.xcresult
+          if-no-files-found: ignore

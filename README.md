@@ -1,63 +1,96 @@
 # Approov Quickstart: iOS Swift Moya
 
-This quickstart is written specifically for native iOS apps that are written in Swift and use [Moya](https://github.com/Moya/Moya) for making API calls that you wish to protect with Approov. If this is not your situation then check if there is a more relevant quickstart guide available.
+[![CI](https://github.com/approov/quickstart-ios-swift-moya/actions/workflows/ios.yml/badge.svg)](https://github.com/approov/quickstart-ios-swift-moya/actions/workflows/ios.yml)
+![Swift](https://img.shields.io/badge/Swift-6.4-orange?logo=swift)
+![iOS](https://img.shields.io/badge/iOS-15%2B-blue?logo=apple)
+![Service layer](https://img.shields.io/badge/ApproovAFSession-3.5.6-blue)
+![SDK](https://img.shields.io/badge/Approov_SDK-3.5.3-blue)
+![Signing](https://img.shields.io/badge/Message_Signing-RFC_9421-green)
 
-This page provides all the steps for integrating Approov into your app. Additionally, a step-by-step tutorial guide using our [Shapes App Example](https://github.com/approov/quickstart-ios-swift-moya/blob/master/SHAPES-EXAMPLE.md) is also available.
-
-The quickstart is very similar to Alomafire, with Moya Abstraction added on top of it.
-
-To follow this guide you should have received an onboarding email for a trial or paid Approov account.
-
-Note that the minimum requirement is iOS 12. You cannot use Approov in apps that support iOS versions older than this.
+Integrate Approov into a Swift iOS app using [Moya](https://github.com/Moya/Moya). Moya uses Alamofire underneath; the Approov Alamofire service provides token injection, dynamic pinning and optional secrets protection and message signing. Follow the [Shapes worked example](SHAPES-EXAMPLE.md) to exercise the integration with an Approov trial or paid account.
 
 ## ADDING APPROOV SERVICE DEPENDENCY
-The Approov integration is available via the [`Swift Package Manager`](https://developer.apple.com/documentation/swift_packages/adding_package_dependencies_to_your_app). This allows inclusion by simply specifying a dependency in the `File -> Add Packages..` Xcode option available if the project is selected:
+
+Use [Swift Package Manager](https://developer.apple.com/documentation/swift_packages/adding_package_dependencies_to_your_app) in **File → Add Package Dependencies**:
+
+| Repository | Exact version | Product / Swift import |
+| --- | --- | --- |
+| `https://github.com/approov/approov-service-alamofire.git` | `3.5.6` | `ApproovAFSession` |
+| `https://github.com/Moya/Moya.git` | `15.0.3` | `Moya` |
 
 ![Add Package Dependency](readme-images/add-package-repository.png)
 
-Enter the repository `https://github.com/approov/approov-service-alamofire.git` into the search box. You will then have to select the relevant version you wish to use. To do so, select the `Exact Version` option and enter a specific version you require or use the latest one, which should automatically be selected for you.
+The sample already includes these dependencies. `ApproovSession` is the session **class**; `ApproovAFSession` is the package product and module. The service depends on the closed-source [Approov iOS SDK](https://github.com/approov/approov-ios-sdk) 3.5.3. Commit the application's `Package.resolved` file so CI and local builds use the same transitive versions.
 
-Once you click `Add Package` the last screen will confirm the package product and target selection. The `approov-service-alamofire` and Approov SDK are now included as a dependency in your project. The `approov-service-alamofire` is actually an open source wrapper layer that allows you to easily use the Approov SDK itself with Alamofire.  This has a further dependency to the closed source [Approov SDK](https://github.com/approov/approov-ios-sdk).
+## PROJECT CHANGES
 
-## USING APPROOV SERVICE
-The `ApproovSession` class extends the [Session](https://alamofire.github.io/Alamofire/Classes/Session.html) class defined by Alamofire and handles connections by providing pinning and Approov protection. The simplest way to use the `ApproovSession` class is to find and replace all the `Session` creation instances with `ApproovSession`.
+Open `shapes-app/ApproovShapes.xcodeproj` with Xcode 26.4 / Swift 6.4. The checked-in dependency resolution uses Alamofire 5.12.2, which requires iOS 15 and Swift 6.4. The previous iOS 12 / Xcode 16.4 instructions do not apply to this dependency set. Choose your own signing team for physical-device builds.
+
+For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.plist` empty. To enable Approov, set it to your account's SDK configuration and select the protected Shapes endpoint as described in the [tutorial](SHAPES-EXAMPLE.md). Do not commit account-specific configuration or development overrides.
+
+## INITIALIZING APPROOV
+
+Initialize once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`, before creating a provider. The sample implements this in `ShapesNetworking.initialize(config:)`. A standalone integration should handle both initial setup and fallback explicitly:
 
 ```swift
-import ApproovSession
+import ApproovAFSession
 
-try! ApproovService.initialize("<enter-your-config-string-here>")
-let session = ApproovSession()
+let correlationID = UUID().uuidString
+do {
+    try ApproovService.initialize(config: config)
+    if ApproovService.isInitialized() && ApproovService.isApproovEnabled() {
+        NSLog("Approov enabled; session=%@ device=%@", correlationID,
+              ApproovService.getDeviceID() ?? "unavailable")
+    } else {
+        NSLog("Approov bypass mode; session=%@", correlationID)
+    }
+} catch {
+    NSLog("Approov initialization failed; session=%@", correlationID)
+    do {
+        try ApproovService.initialize(config: "")
+        // Requests now proceed without Approov protection.
+        // The backend must reject requests lacking the required proof.
+    } catch {
+        // Keep networking unavailable and show a recoverable setup error.
+        NSLog("Approov bypass setup failed; session=%@", correlationID)
+    }
+}
 ```
 
-Additionally, the Approov SDK wrapper class, `ApproovService` needs to be initialized before using the `ApproovSession` object. The `<enter-your-config-string-here>` is a custom string that configures your Approov account access. This will have been provided in your Approov onboarding email (it will be something like `#123456#K/XPlLtfcwnWkzv99Wj5VmAxo4CrU267J1KlQyoz8Qo=`).
+An empty configuration initializes the service in bypass mode without initializing the native SDK. Check `isApproovEnabled()` before claiming protection is active. Apply substitution, binding or signing configuration **after** initialization, because initialization resets service settings. Never log full tokens, API keys or configuration strings.
 
-For API domains that are configured to be protected with an Approov token, this adds the `Approov-Token` header and pins the connection. This may also substitute header values and query parameters when using secrets protection.
+## USING MOYA WITH APPROOV
 
-## ERROR TYPES
-The `ApproovService` functions may throw specific errors to provide additional information:
+Retain a provider backed by an Approov session, and handle session creation failure:
 
-* `permanentError` might be due to a feature not enabled using the command line
-* `rejectionError` an attestation has been rejected, the `ARC` and `rejectionReasons` may contain specific device information that would help troubleshooting
-* `networkingError` can generally be retried since it can be temporary network issue
-* `pinningError` is a certificate error
-* `configurationError` a configuration feature is disabled or wrongly configured (i.e. attempting to initialize with different config from a previous instantiation)
-* `initializationFailure` the ApproovService failed to be initialized (subsequent network requests will not be performed)
+```swift
+import Moya
+import ApproovAFSession
+
+// Run only after successful service or bypass initialization.
+guard ApproovService.isInitialized(),
+      let session = ApproovSession(startRequestsImmediately: false) else {
+    // Show a setup error and leave networking unavailable.
+    return
+}
+let provider = MoyaProvider<MyService>(session: session)
+```
+
+`startRequestsImmediately: false` lets Moya attach its handlers before starting a request, following [Moya's custom-session guidance](https://github.com/Moya/Moya/blob/master/docs/Providers.md). Keep using this provider for protected targets. See [Moya options](MOYA-OPTIONS.md) for session customization.
+
+Moya can return `.success(Response)` for HTTP errors such as 401, 403 or 500. Check the status code and decode response bodies safely. The sample displays HTTP failures and malformed responses without force-unwrapping server-controlled JSON.
 
 ## CHECKING IT WORKS
-Initially you won't have set which API domains to protect, so the interceptor will not add anything. It will have called Approov though and made contact with the Approov cloud service. You will see logging from Approov saying `unknown URL`.
 
-Your Approov onboarding email should contain a link allowing you to access [Live Metrics Graphs](https://approov.io/docs/latest/approov-usage-documentation/#metrics-graphs). After you've run your app with Approov integration you should be able to see the results in the live metrics within a minute or so. At this stage you could even release your app to get details of your app population and the attributes of the devices they are running upon.
+Start with the [Shapes tutorial](SHAPES-EXAMPLE.md), then run the automated checks and device scenarios in [TESTING.md](TESTING.md). Simulator builds and stubbed responses do not prove real attestation, TLS pinning or backend enforcement.
+
+For account diagnostics, check [Live Metrics](https://approov.io/docs/latest/approov-usage-documentation/#metrics-graphs). An unknown API domain does not receive an Approov token. Seeing requests succeed against an unprotected endpoint is only a connectivity check.
 
 ## NEXT STEPS
-To actually protect your APIs and/or secrets there are some further steps. Approov provides two different options for protection:
 
-* [API PROTECTION](https://github.com/approov/quickstart-ios-swift-alamofire/blob/master/API-PROTECTION.md): You should use this if you control the backend API(s) being protected and are able to modify them to ensure that a valid Approov token is being passed by the app. An [Approov Token](https://approov.io/docs/latest/approov-usage-documentation/#approov-tokens) is short lived cryptographically signed JWT proving the authenticity of the call.
+- [API protection](API-PROTECTION.md): enforce an [Approov token](https://approov.io/docs/latest/approov-usage-documentation/#approov-tokens) at your backend.
+- [Secrets protection](SECRETS-PROTECTION.md): replace embedded credentials with Approov-managed secrets. It can be combined with API protection.
+- [Reference](REFERENCE.md): the public API for the pinned service version.
+- [Moya options](MOYA-OPTIONS.md) and [Alamofire options](https://github.com/approov/approov-service-alamofire/blob/3.5.6/ALAMOFIRE-OPTIONS.md).
 
-* [SECRETS PROTECTION](https://github.com/approov/quickstart-ios-swift-alamofire/blob/master/SECRETS-PROTECTION.md): This allows app secrets, including API keys for 3rd party services, to be protected so that they no longer need to be included in the released app code. These secrets are only made available to valid apps at runtime.
-
-Note that it is possible to use both approaches side-by-side in the same app.
-
-See [REFERENCE](https://github.com/approov/quickstart-ios-swift-alamofire/blob/master/REFERENCE.md) for a complete list of all of the `ApproovService` methods.
-
-## ALAMOFIRE FEATURES
-Additional optional features regarding `Alamofire` are described [here](https://github.com/approov/quickstart-ios-swift-alamofire/blob/master/ALAMOFIRE-OPTIONS.md)
+This quickstart targets the published 3.5.6 service. The upcoming service migration has a different request/status/signing contract; do not apply those assumptions to this version.
