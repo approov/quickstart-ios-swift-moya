@@ -36,4 +36,10 @@ enum ShapesNetworking {
         }
         return MoyaProvider<MyService>(session: session)
     }
+
+    static func enableInstallationMessageSigning() {
+        ApproovService.setServiceMutator(
+            ApproovDefaultMessageSigning().setDefaultFactory(
+                ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
+    }
 }

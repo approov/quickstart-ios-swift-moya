@@ -11,20 +11,14 @@ import Moya
 enum MyService {
     case Hello
     case Shape
+    case ProtectedShape
+    case SignedShape
 }
 
 
 extension MyService: TargetType {
     var baseURL : URL { URL(string : "https://shapes.approov.io/")! }
-    var task: Task {
-        switch self {
-        case .Hello:
-            return .requestPlain
-        case .Shape:
-            
-            return .requestPlain
-        }
-    }
+    var task: Task { .requestPlain }
     
     var headers: [String : String]? {
         return ["Content-type" : "application/json"
@@ -43,22 +37,12 @@ extension MyService: TargetType {
             return "v1/hello"
         case .Shape:
             return "v1/shapes"
-            // *** UNCOMMENT TO USE APPROOV
-//            return "v3/shapes"
-//*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-//          return "v5/shapes/"
+        case .ProtectedShape:
+            return "v3/shapes"
+        case .SignedShape:
+            return "v5/shapes"
         }
     }
-    
-    var method : Moya.Method {
-        switch self {
-        case .Hello:
-            return .get
-        case .Shape:
-            return .get
-        }
-        
-    }
-    
-    
+
+    var method: Moya.Method { .get }
 }

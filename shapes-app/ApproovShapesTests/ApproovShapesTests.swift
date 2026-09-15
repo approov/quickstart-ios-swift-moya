@@ -69,7 +69,10 @@ final class ApproovShapesTests: XCTestCase {
     }
 
     func testTargetsUseHTTPSAndExpectedPaths() throws {
-        for (target, path) in [(MyService.Hello, "/v1/hello"), (.Shape, "/v1/shapes")] {
+        for (target, path) in [(MyService.Hello, "/v1/hello"),
+                               (.Shape, "/v1/shapes"),
+                               (.ProtectedShape, "/v3/shapes"),
+                               (.SignedShape, "/v5/shapes")] {
             let request = try MoyaProvider<MyService>.defaultEndpointMapping(for: target).urlRequest()
             XCTAssertEqual(request.url?.scheme, "https")
             XCTAssertEqual(request.url?.host, "shapes.approov.io")
@@ -125,6 +128,62 @@ final class ApproovShapesTests: XCTestCase {
             }
             wait(for: [completed], timeout: 20)
         }
+    }
+
+    func testLiveProtectedEndpointsRejectBypassRequests() throws {
+        guard ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1" else {
+            throw XCTSkip("Set RUN_LIVE_TESTS=1 to verify protected endpoint rejection")
+        }
+        try ShapesNetworking.initialize(config: "")
+        let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
+        for target in [MyService.ProtectedShape, .SignedShape] {
+            let response = try liveResponse(for: target, using: provider)
+            XCTAssertNotEqual(response.statusCode, 200, "\(target) accepted a bypass-mode request")
+        }
+    }
+
+    func testLiveProtectedV3AndSignedV5Endpoints() throws {
+        guard ProcessInfo.processInfo.environment["RUN_PROTECTED_LIVE_TESTS"] == "1" else {
+            throw XCTSkip("Set RUN_PROTECTED_LIVE_TESTS=1 and APPROOV_CONFIG to exercise v3 and v5")
+        }
+        guard let config = ProcessInfo.processInfo.environment["APPROOV_CONFIG"], !config.isEmpty else {
+            XCTFail("APPROOV_CONFIG is required for protected endpoint tests")
+            return
+        }
+
+        // Upgrade the app process to protected mode and prove v3 token acceptance.
+        try ShapesNetworking.initialize(config: config)
+        XCTAssertTrue(ApproovService.isApproovEnabled(), "The supplied config did not enable Approov")
+        let protectedProvider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
+        let v3Response = try liveResponse(for: .ProtectedShape, using: protectedProvider)
+        XCTAssertEqual(v3Response.statusCode, 200, "v3 response: \(responseBody(v3Response))")
+
+        // v5 must reject an unsigned protected request, then accept installation signing.
+        let unsignedV5Response = try liveResponse(for: .SignedShape, using: protectedProvider)
+        XCTAssertNotEqual(unsignedV5Response.statusCode, 200,
+                          "unsigned v5 response: \(responseBody(unsignedV5Response))")
+        ShapesNetworking.enableInstallationMessageSigning()
+        let signedResponse = try liveResponse(for: .SignedShape, using: protectedProvider)
+        XCTAssertEqual(signedResponse.statusCode, 200, "v5 response: \(responseBody(signedResponse))")
+        let presentation = ShapesPresentation.make(target: .SignedShape, result: .success(signedResponse))
+        XCTAssertNotEqual(presentation.imageName, "confused", presentation.message)
+    }
+
+    private func liveResponse(for target: MyService,
+                              using provider: MoyaProvider<MyService>,
+                              timeout: TimeInterval = 30) throws -> Response {
+        let completed = expectation(description: "live response for \(target)")
+        var received: Result<Response, MoyaError>?
+        provider.request(target) { result in
+            received = result
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: timeout)
+        return try XCTUnwrap(received).get()
+    }
+
+    private func responseBody(_ response: Response) -> String {
+        String(data: response.data, encoding: .utf8) ?? "<non-UTF-8 response body>"
     }
 }
 

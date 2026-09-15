@@ -63,10 +63,16 @@ Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's S
 
 The sample already passes an `ApproovSession(startRequestsImmediately: false)` to its Moya provider. No import or provider code needs uncommenting.
 
-In `MyService.swift`, change the `.Shape` path from `v1/shapes` to:
+The sample defines separate `.Shape`, `.ProtectedShape` and `.SignedShape` targets. In `ViewController.swift`, change the Shape button from:
 
 ```swift
-return "v3/shapes"
+request(.Shape)
+```
+
+to:
+
+```swift
+request(.ProtectedShape)
 ```
 
 The v3 endpoint requires a valid Approov token. Leaving the v1 path selected tests only the public demo API key. The embedded key belongs to the public Shapes demonstration; never embed your production API credentials this way.
@@ -118,20 +124,17 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
  This section shows how to add message signing as an additional layer of protection in addition to an Approov token.
 
-1. Make sure we are using the `https://shapes.approov.io/v5/shapes/` endpoint of the shapes server. The v5 endpoint performs a message signature check in addition to the Approov token check. Find the following line in the `MyService.swift`  source file and uncomment it to point to `v5` (commenting the previous definitions):
+1. Make sure the Shape button uses the `https://shapes.approov.io/v5/shapes` endpoint. The v5 endpoint performs a message signature check in addition to the Approov token check. Change the button action in `ViewController.swift` to:
 
 ```swift
-//*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-//            return "v5/shapes"
+request(.SignedShape)
 ```
 
- 2. Uncomment the message signing setup code in `ShapesNetworking.swift`. This adds a service mutator to the ApproovService which adds the message signature to the request automatically.
+ 2. After initialization, enable message signing with the helper in `ShapesNetworking.swift`. It adds the signing service mutator to `ApproovService`:
 
 ```swift
 //*** UNCOMMENT THE LINES BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-ApproovService.setServiceMutator(
-    ApproovDefaultMessageSigning().setDefaultFactory(
-        ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
+ShapesNetworking.enableInstallationMessageSigning()
 ```
 
  3. Configure Approov to add the public message signing key to the approov token. This key is used by the v5 endpoint to perform its message signature check.

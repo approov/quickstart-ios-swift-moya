@@ -36,6 +36,26 @@ RUN_LIVE_TESTS=1 xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
 
 When running from a shell, Xcode may not forward custom environment variables to the test host. In that case, add `RUN_LIVE_TESTS=1` to the scheme's Test action or set it in the selected simulator before running the live test.
 
+Two additional opt-in tests cover the protected endpoints. One confirms that bypass-mode v3 and v5 requests are rejected. The other confirms that v3 accepts a valid Approov token, v5 rejects the same request without a message signature, and v5 accepts the installation-signed request. Set `RUN_LIVE_TESTS=1` for the rejection test. Set both `RUN_PROTECTED_LIVE_TESTS=1` and `APPROOV_CONFIG` for the protected test. The account must manage `shapes.approov.io`, include the installation public key in tokens, and pass the selected test device:
+
+```sh
+approov api -add shapes.approov.io
+approov policy -setInstallPubKey on
+```
+
+Run the protected tests as separate selected-test invocations while changing account policy. Approov configuration is process-wide, so this keeps the bypass and protected phases independent:
+
+```sh
+xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
+  -scheme ApproovShapes \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4' \
+  -derivedDataPath build-protected -resultBundlePath ProtectedTestResults.xcresult \
+  -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- \
+  -only-testing:ApproovShapesTests/ApproovShapesTests/testLiveProtectedV3AndSignedV5Endpoints test
+```
+
+Do not commit `APPROOV_CONFIG` or a development/force-pass override. Remove temporary account overrides after collecting the results.
+
 The example intentionally starts in bypass mode against v1. Passing these tests is not evidence of backend enforcement.
 
 ## Build Release for physical devices
@@ -82,9 +102,9 @@ These are deterministic in-process checks against the mini SDK. They do not prov
 Use a dedicated test account and record app commit, package lock, device/OS, signing identity, policy and result for each scenario. Do not put secrets or full tokens in the evidence report.
 
 1. Run the Hello and v1 demo steps. Confirm these are labeled unprotected and do not count as a protection pass.
-2. Configure the account and v3 endpoint. On a registered signed device with no debugger or force-pass override, verify valid tokens are accepted. Verify missing, invalid, expired and replayed tokens are rejected by the backend.
+2. Configure the account and v3 endpoint. The guarded protected live test covers missing and valid proof. On a registered signed device without a development/force-pass override, also verify invalid, expired and replayed tokens are rejected by the backend.
 3. Run the pinning scenarios in §4, including invalid system trust in bypass mode and the two shared-certificate host orders. Capture server receipt/non-receipt and pin-check logs.
-4. Configure v5 and verify both valid message signatures and tampered/missing signatures. Exercise digest and signing-failure cases from §5.
+4. Configure v5. The guarded protected live test covers missing and valid installation signatures. Also verify tampered signature rejection and exercise digest and signing-failure cases from §5.
 5. Run secrets protection with placeholders; verify backend acceptance after substitution and rejection/failure paths. Confirm real credentials are absent from the app binary.
 6. Exercise offline/poor network, cancellation, rapid taps, background/foreground recovery, and backend 401/403/429/5xx responses.
 7. Repeat on the oldest supported iOS version and a current physical device. Remove development keys/force-pass settings, build a signed Release archive, validate privacy manifests and App Store requirements, and refresh walkthrough screenshots.
