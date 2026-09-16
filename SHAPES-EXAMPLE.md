@@ -59,21 +59,11 @@ Tokens for this domain will be automatically signed with the specific secret for
 
 ## MODIFY THE APP TO USE APPROOV
 
-Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's SDK configuration string. Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state, logs a correlation ID and device ID, and handles initialization failure by entering explicit bypass mode. In bypass mode the backend must reject requests without valid Approov proof.
+Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's SDK configuration string. Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state, logs a correlation ID and device ID, and blocks provider creation if setup fails. An empty configuration is the explicit, unprotected tutorial mode.
 
 The sample already passes an `ApproovSession(startRequestsImmediately: false)` to its Moya provider. No import or provider code needs uncommenting.
 
-The sample defines separate `.Shape`, `.ProtectedShape` and `.SignedShape` targets. In `ViewController.swift`, change the Shape button from:
-
-```swift
-request(.Shape)
-```
-
-to:
-
-```swift
-request(.ProtectedShape)
-```
+The sample defines separate `.Shape`, `.ProtectedShape` and `.SignedShape` targets. The Shape button automatically selects `.ProtectedShape` after successful account initialization. No source edit is required.
 
 The v3 endpoint requires a valid Approov token. Leaving the v1 path selected tests only the public demo API key. The embedded key belongs to the public Shapes demonstration; never embed your production API credentials this way.
 
@@ -124,18 +114,9 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
  This section shows how to add message signing as an additional layer of protection in addition to an Approov token.
 
-1. Make sure the Shape button uses the `https://shapes.approov.io/v5/shapes` endpoint. The v5 endpoint performs a message signature check in addition to the Approov token check. Change the button action in `ViewController.swift` to:
+1. Set `ApproovConfig` to the account SDK configuration and set the Boolean `ApproovMessageSigning` to `YES` in `Info.plist`.
 
-```swift
-request(.SignedShape)
-```
-
- 2. After initialization, enable message signing with the helper in `ShapesNetworking.swift`. It adds the signing service mutator to `ApproovService`:
-
-```swift
-//*** UNCOMMENT THE LINES BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-ShapesNetworking.enableInstallationMessageSigning()
-```
+2. The app enables the signing mutator after successful initialization and automatically selects `https://shapes.approov.io/v5/shapes`. The helper `try ShapesNetworking.enableInstallationMessageSigning()` is also available for an explicit transition after initialization. It rejects bypass mode.
 
  3. Configure Approov to add the public message signing key to the approov token. This key is used by the v5 endpoint to perform its message signature check.
 

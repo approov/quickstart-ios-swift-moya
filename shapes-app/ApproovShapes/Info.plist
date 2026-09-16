@@ -60,5 +60,7 @@
 	</array>
 	<key>ApproovConfig</key>
 	<string></string>
+	<key>ApproovMessageSigning</key>
+	<false/>
 </dict>
 </plist>

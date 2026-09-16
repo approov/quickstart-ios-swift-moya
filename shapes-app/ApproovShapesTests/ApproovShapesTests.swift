@@ -4,6 +4,24 @@ import ApproovAFSession
 @testable import ApproovShapes
 
 final class ApproovShapesTests: XCTestCase {
+    func testFailedProtectedSetupBlocksProviderEvenAfterBypass() throws {
+        try ShapesNetworking.initialize(config: "")
+        defer { try? ShapesNetworking.initialize(config: "") }
+        XCTAssertThrowsError(try ShapesNetworking.initialize(config: "invalid-sdk-configuration"))
+        XCTAssertNil(ShapesNetworking.shapeTarget)
+        XCTAssertThrowsError(try ShapesNetworking.makeProvider())
+    }
+
+    func testSigningCannotBeEnabledInBypassMode() throws {
+        try ShapesNetworking.initialize(config: "")
+        defer { try? ShapesNetworking.initialize(config: "") }
+        XCTAssertEqual(ShapesNetworking.shapeTarget, .Shape)
+        XCTAssertThrowsError(try ShapesNetworking.enableInstallationMessageSigning())
+        XCTAssertThrowsError(try ShapesNetworking.initialize(config: "", messageSigning: true))
+        XCTAssertNil(ShapesNetworking.shapeTarget)
+        XCTAssertThrowsError(try ShapesNetworking.makeProvider())
+    }
+
     private func present(_ json: String, code: Int = 200, target: MyService = .Shape) -> ShapesPresentation {
         ShapesPresentation.make(target: target, result: .success(Response(statusCode: code, data: Data(json.utf8))))
     }
@@ -138,7 +156,13 @@ final class ApproovShapesTests: XCTestCase {
         let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
         for target in [MyService.ProtectedShape, .SignedShape] {
             let response = try liveResponse(for: target, using: provider)
-            XCTAssertNotEqual(response.statusCode, 200, "\(target) accepted a bypass-mode request")
+            XCTAssertEqual(response.statusCode, 400, "\(target): \(responseBody(response))")
+            XCTAssertTrue(responseBody(response).lowercased().contains("approov token"), responseBody(response))
+            var invalidRequest = try MoyaProvider<MyService>.defaultEndpointMapping(for: target).urlRequest()
+            invalidRequest.setValue("invalid-test-token", forHTTPHeaderField: "Approov-Token")
+            let invalidResponse = try rawResponse(for: invalidRequest)
+            XCTAssertEqual(invalidResponse.statusCode, 400)
+            XCTAssertTrue(responseBody(invalidResponse).contains("invalid approov token"), responseBody(invalidResponse))
         }
     }
 
@@ -154,19 +178,50 @@ final class ApproovShapesTests: XCTestCase {
         // Upgrade the app process to protected mode and prove v3 token acceptance.
         try ShapesNetworking.initialize(config: config)
         XCTAssertTrue(ApproovService.isApproovEnabled(), "The supplied config did not enable Approov")
+        XCTAssertEqual(ShapesNetworking.shapeTarget, .ProtectedShape)
         let protectedProvider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
         let v3Response = try liveResponse(for: .ProtectedShape, using: protectedProvider)
         XCTAssertEqual(v3Response.statusCode, 200, "v3 response: \(responseBody(v3Response))")
 
         // v5 must reject an unsigned protected request, then accept installation signing.
         let unsignedV5Response = try liveResponse(for: .SignedShape, using: protectedProvider)
-        XCTAssertNotEqual(unsignedV5Response.statusCode, 200,
+        XCTAssertEqual(unsignedV5Response.statusCode, 400,
                           "unsigned v5 response: \(responseBody(unsignedV5Response))")
-        ShapesNetworking.enableInstallationMessageSigning()
+        XCTAssertTrue(responseBody(unsignedV5Response).lowercased().contains("signature"), responseBody(unsignedV5Response))
+        try ShapesNetworking.initialize(config: config, messageSigning: true)
+        XCTAssertEqual(ShapesNetworking.shapeTarget, .SignedShape)
         let signedResponse = try liveResponse(for: .SignedShape, using: protectedProvider)
         XCTAssertEqual(signedResponse.statusCode, 200, "v5 response: \(responseBody(signedResponse))")
         let presentation = ShapesPresentation.make(target: .SignedShape, result: .success(signedResponse))
         XCTAssertNotEqual(presentation.imageName, "confused", presentation.message)
+
+        // Send the same authenticated request with corrupted signature bytes.
+        // Use an ordinary session so the Approov interceptor cannot repair it.
+        var tamperedRequest = try XCTUnwrap(signedResponse.request)
+        let signature = try XCTUnwrap(tamperedRequest.value(forHTTPHeaderField: "Signature"))
+        let separator = try XCTUnwrap(signature.firstIndex(of: ":"))
+        tamperedRequest.setValue(String(signature[...separator]) + Data(repeating: 0, count: 64).base64EncodedString() + ":",
+                                 forHTTPHeaderField: "Signature")
+        let tamperedResponse = try rawResponse(for: tamperedRequest)
+        XCTAssertEqual(tamperedResponse.statusCode, 400)
+        XCTAssertTrue(responseBody(tamperedResponse).lowercased().contains("signature"), responseBody(tamperedResponse))
+    }
+
+    private func rawResponse(for request: URLRequest) throws -> Response {
+        let completed = expectation(description: "backend rejects altered proof")
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        var received: Response?
+        session.dataTask(with: request) { data, response, error in
+            if let response = response as? HTTPURLResponse, let data = data {
+                received = Response(statusCode: response.statusCode, data: data)
+            } else {
+                XCTFail("Backend rejection request did not receive an HTTP response (\(error != nil))")
+            }
+            completed.fulfill()
+        }.resume()
+        wait(for: [completed], timeout: 30)
+        return try XCTUnwrap(received)
     }
 
     private func liveResponse(for target: MyService,

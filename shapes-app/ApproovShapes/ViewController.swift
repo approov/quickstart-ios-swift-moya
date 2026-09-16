@@ -34,7 +34,13 @@ class ViewController: UIViewController {
     }
 
     @IBAction func checkHello() { request(.Hello) }
-    @IBAction func checkShape() { request(.Shape) }
+    @IBAction func checkShape() {
+        guard let target = ShapesNetworking.shapeTarget else {
+            render(ShapesPresentation(message: "Network setup failed. Check Approov configuration.", imageName: "confused"))
+            return
+        }
+        request(target)
+    }
 
     private func request(_ target: MyService) {
         guard let provider = provider else {
@@ -45,7 +51,9 @@ class ViewController: UIViewController {
         let id = UUID()
         requestID = id
         currentRequest?.cancel()
-        render(ShapesPresentation(message: target == .Hello ? "Checking connectivity..." : "Checking app authenticity...",
+        let message = target == .Hello ? "Checking connectivity..." :
+            (target == .Shape ? "Loading public demo (unprotected)..." : "Checking app authenticity...")
+        render(ShapesPresentation(message: message,
                                   imageName: "approov"))
         currentRequest = provider.request(target, callbackQueue: .main) { [weak self] result in
             guard let self = self, self.requestID == id else { return }

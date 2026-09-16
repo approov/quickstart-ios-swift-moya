@@ -23,9 +23,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Initialize once, before a view can create a Moya provider.
         let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
         do {
-            try ShapesNetworking.initialize(config: config)
+            let signing = Bundle.main.object(forInfoDictionaryKey: "ApproovMessageSigning") as? Bool ?? false
+            try ShapesNetworking.initialize(config: config, messageSigning: signing)
         } catch {
-            NSLog("Approov initialization and bypass setup failed; networking is unavailable.")
+            NSLog("Approov setup failed; networking is unavailable. Check the app configuration.")
         }
         return true
     }

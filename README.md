@@ -26,11 +26,11 @@ The sample already includes these dependencies. `ApproovSession` is the session 
 
 Open `shapes-app/ApproovShapes.xcodeproj` with Xcode 26.4 / Swift 6.4. The checked-in dependency resolution uses Alamofire 5.12.2, which requires iOS 15 and Swift 6.4. The previous iOS 12 / Xcode 16.4 instructions do not apply to this dependency set. Choose your own signing team for physical-device builds.
 
-For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.plist` empty. To enable Approov, set it to your account's SDK configuration and select the protected Shapes endpoint as described in the [tutorial](SHAPES-EXAMPLE.md). Do not commit account-specific configuration or development overrides.
+For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.plist` empty. A valid account configuration automatically selects the protected v3 Shape endpoint. Set `ApproovMessageSigning` to `YES` to enable installation signing and select v5. Signing requires a non-empty account configuration. Do not commit account-specific configuration or development overrides.
 
 ## INITIALIZING APPROOV
 
-Initialize once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`, before creating a provider. The sample implements this in `ShapesNetworking.initialize(config:)`. A standalone integration should handle both initial setup and fallback explicitly:
+Initialize once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`, before creating a provider. The sample implements this in `ShapesNetworking.initialize(config:messageSigning:)`. Failed setup leaves provider creation unavailable, even if an earlier service initialization left the SDK in bypass mode:
 
 ```swift
 import ApproovAFSession
@@ -46,14 +46,9 @@ do {
     }
 } catch {
     NSLog("Approov initialization failed; session=%@", correlationID)
-    do {
-        try ApproovService.initialize(config: "")
-        // Requests now proceed without Approov protection.
-        // The backend must reject requests lacking the required proof.
-    } catch {
-        // Keep networking unavailable and show a recoverable setup error.
-        NSLog("Approov bypass setup failed; session=%@", correlationID)
-    }
+    // Keep networking unavailable. Correct the configuration before retrying.
+    // Do not turn an invalid production configuration into unprotected requests.
+    return
 }
 ```
 
