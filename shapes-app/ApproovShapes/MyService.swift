@@ -8,7 +8,7 @@
 import Foundation
 import Moya
 
-enum MyService {
+enum MyService: Equatable {
     case Hello
     case Shape
     case ProtectedShape
