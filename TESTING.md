@@ -2,7 +2,7 @@
 
 ## Baseline
 
-This quickstart consumes Approov Alamofire **3.5.6**, Moya **15.0.3** and native Approov SDK **3.5.3**. The committed Xcode `Package.resolved` records every transitive dependency. Local validation used Xcode **26.4 (17E192)** and iOS Simulator **26.4**. The CI image offers Xcode 26.4.1 through the same `Xcode_26.4.app` path; CI itself still needs a hosted run.
+This quickstart consumes Approov Alamofire **3.5.6**, Moya **15.0.3** and native Approov SDK **3.5.3**. The committed Xcode `Package.resolved` records every transitive dependency. Local validation used Xcode **26.4 (17E192)** and iOS Simulator **26.4**. Hosted CI uses Xcode **26.4.1 (17E202)** and iOS Simulator **26.4.1**; its dependency, test, Release-build and artifact-upload steps passed on 2026-09-16.
 
 The authoritative stable acceptance criteria are [core-service-layers-testing/TESTING_REQUIREMENTS.md at 1ea387b](https://github.com/approov/core-service-layers-testing/blob/1ea387b/TESTING_REQUIREMENTS.md), rechecked on 2026-09-16. There is no separate Moya or Alamofire requirements file in that revision. Moya consumes the Alamofire service; the general requirements therefore apply to that dependency as well as this integration. CI uses the iOS 26.4.1 runtime installed with its pinned Xcode 26.4.1 image; local commands below use the available iOS 26.4 runtime.
 
