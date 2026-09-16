@@ -25,7 +25,7 @@ jobs:
           xcodebuild -version
           xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
             -scheme ApproovShapes \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4.1' \
             -derivedDataPath build -resultBundlePath TestResults.xcresult \
             -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- test
       - name: Build Release for iOS devices
