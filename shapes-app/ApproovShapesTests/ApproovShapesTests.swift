@@ -1,10 +1,18 @@
 import XCTest
+import Alamofire
 import Moya
 import ApproovAFSession
 @testable import ApproovShapes
 
 final class ApproovShapesTests: XCTestCase {
+    // Approov never downgrades a protected process to bypass mode, so these tests
+    // skip after the protected live test has initialized the same process.
+    private func requireBypassProcess() throws {
+        try XCTSkipIf(ApproovService.isApproovEnabled(), "Requires a bypass-mode process")
+    }
+
     func testFailedProtectedSetupBlocksProviderEvenAfterBypass() throws {
+        try requireBypassProcess()
         try ShapesNetworking.initialize(config: "")
         defer { try? ShapesNetworking.initialize(config: "") }
         XCTAssertThrowsError(try ShapesNetworking.initialize(config: "invalid-sdk-configuration"))
@@ -13,6 +21,7 @@ final class ApproovShapesTests: XCTestCase {
     }
 
     func testSigningCannotBeEnabledInBypassMode() throws {
+        try requireBypassProcess()
         try ShapesNetworking.initialize(config: "")
         defer { try? ShapesNetworking.initialize(config: "") }
         XCTAssertEqual(ShapesNetworking.shapeTarget, .Shape)
@@ -71,6 +80,18 @@ final class ApproovShapesTests: XCTestCase {
         XCTAssertFalse(presentation.message.contains("sensitive"))
     }
 
+    // Mirrors the unwrapping shown in SECRETS-PROTECTION.md#handling-rejections.
+    func testApproovRejectionCanBeReadFromMoyaError() {
+        let rejection = ApproovError.rejectionError(message: "rejected", ARC: "arc", rejectionReasons: "reasons")
+        let result: Result<Response, MoyaError> = .failure(.underlying(AFError.requestAdaptationFailed(error: rejection), nil))
+        guard case .failure(.underlying(let error, _)) = result,
+              case .rejectionError(_, let arc, let rejectionReasons)? = error.asAFError?.underlyingError as? ApproovError else {
+            return XCTFail("ApproovError was not found in the Moya error")
+        }
+        XCTAssertEqual(arc, "arc")
+        XCTAssertEqual(rejectionReasons, "reasons")
+    }
+
     func testMoyaHTTPErrorIsHandledEvenThoughTransportSucceeded() {
         let completed = expectation(description: "stubbed response")
         let provider = MoyaProvider<MyService>(endpointClosure: { target in
@@ -100,6 +121,7 @@ final class ApproovShapesTests: XCTestCase {
     }
 
     func testMoyaUsesApproovSessionAndBypassPreservesRequest() throws {
+        try requireBypassProcess()
         try ShapesNetworking.initialize(config: "")
         XCTAssertTrue(ApproovService.isInitialized())
         XCTAssertFalse(ApproovService.isApproovEnabled())
@@ -122,6 +144,29 @@ final class ApproovShapesTests: XCTestCase {
             completed.fulfill()
         }
         wait(for: [completed], timeout: 5)
+    }
+
+    // Alamofire 5.11+ adapts with the session interceptor (Approov) before the per-request
+    // interceptor that runs Moya plugin prepare(). Approov cannot bind, substitute or sign
+    // plugin-added headers; TargetType headers and ApproovSession adapters are visible.
+    func testApproovAdaptsBeforeMoyaPluginPrepare() throws {
+        try requireBypassProcess()
+        try ShapesNetworking.initialize(config: "")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CaptureProtocol.self]
+        let probe = HeaderProbe()
+        let session = try XCTUnwrap(ApproovSession(configuration: configuration, startRequestsImmediately: false,
+                                                   interceptor: Interceptor(adapters: [probe])))
+        let provider = MoyaProvider<MyService>(session: session, plugins: [AuthorizationPlugin()])
+        let completed = expectation(description: "request through plugin and session adapters")
+        var wireHeaders: [String: String]?
+        CaptureProtocol.onRequest = { wireHeaders = $0.allHTTPHeaderFields }
+        defer { CaptureProtocol.onRequest = nil }
+        provider.request(.Hello) { _ in completed.fulfill() }
+        wait(for: [completed], timeout: 5)
+        XCTAssertEqual(probe.seen?["Api-Key"], MyService.Hello.headers?["Api-Key"])
+        XCTAssertNil(probe.seen?["Authorization"], "Session adapters now run before Moya plugins")
+        XCTAssertEqual(wireHeaders?["Authorization"], "Bearer plugin-token")
     }
 
     func testLiveShapesEndpointsThroughMoyaAndApproovSession() throws {
@@ -152,6 +197,7 @@ final class ApproovShapesTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1" else {
             throw XCTSkip("Set RUN_LIVE_TESTS=1 to verify protected endpoint rejection")
         }
+        try requireBypassProcess()
         try ShapesNetworking.initialize(config: "")
         let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
         for target in [MyService.ProtectedShape, .SignedShape] {
@@ -178,6 +224,10 @@ final class ApproovShapesTests: XCTestCase {
         // Upgrade the app process to protected mode and prove v3 token acceptance.
         try ShapesNetworking.initialize(config: config)
         XCTAssertTrue(ApproovService.isApproovEnabled(), "The supplied config did not enable Approov")
+        // Optional development key for simulators; it is held by the native SDK across re-initialization.
+        if let devKey = ProcessInfo.processInfo.environment["APPROOV_DEV_KEY"], !devKey.isEmpty {
+            ApproovService.setDevKey(devKey: devKey)
+        }
         XCTAssertEqual(ShapesNetworking.shapeTarget, .ProtectedShape)
         let protectedProvider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
         let v3Response = try liveResponse(for: .ProtectedShape, using: protectedProvider)
@@ -239,6 +289,24 @@ final class ApproovShapesTests: XCTestCase {
 
     private func responseBody(_ response: Response) -> String {
         String(data: response.data, encoding: .utf8) ?? "<non-UTF-8 response body>"
+    }
+}
+
+private struct AuthorizationPlugin: PluginType {
+    func prepare(_ request: URLRequest, target: TargetType) -> URLRequest {
+        var request = request
+        request.setValue("Bearer plugin-token", forHTTPHeaderField: "Authorization")
+        return request
+    }
+}
+
+// Runs in the same session interceptor as, and immediately before, the Approov adapter.
+// Written once on Alamofire's queue and read after the test's wait, which orders the accesses.
+private final class HeaderProbe: RequestAdapter, @unchecked Sendable {
+    var seen: [String: String]?
+    func adapt(_ urlRequest: URLRequest, for session: Session, completion: @escaping (Result<URLRequest, Error>) -> Void) {
+        seen = urlRequest.allHTTPHeaderFields
+        completion(.success(urlRequest))
     }
 }
 

@@ -1,7 +1,7 @@
 # Approov Quickstart: iOS Swift Moya
 
 [![CI](https://github.com/approov/quickstart-ios-swift-moya/actions/workflows/ios.yml/badge.svg)](https://github.com/approov/quickstart-ios-swift-moya/actions/workflows/ios.yml)
-![Swift](https://img.shields.io/badge/Swift-6.4-orange?logo=swift)
+![Xcode](https://img.shields.io/badge/Xcode-26.4%2B-blue?logo=xcode)
 ![iOS](https://img.shields.io/badge/iOS-15%2B-blue?logo=apple)
 ![Service layer](https://img.shields.io/badge/ApproovAFSession-3.5.6-blue)
 ![SDK](https://img.shields.io/badge/Approov_SDK-3.5.3-blue)
@@ -24,9 +24,9 @@ The sample already includes these dependencies. `ApproovSession` is the session 
 
 ## PROJECT CHANGES
 
-Open `shapes-app/ApproovShapes.xcodeproj` with Xcode 26.4 / Swift 6.4. The checked-in dependency resolution uses Alamofire 5.12.2, which requires iOS 15 and Swift 6.4. The previous iOS 12 / Xcode 16.4 instructions do not apply to this dependency set. Choose your own signing team for physical-device builds.
+Open `shapes-app/ApproovShapes.xcodeproj` in Xcode. The sample targets iOS 15 and is validated with Xcode 26.4 (CI) and Xcode 27.0. The locked dependencies need at least Swift 6.1 tools (Xcode 16.3), which swift-http-structured-headers 1.7.0 requires; older Xcode versions are not tested. Choose your own signing team for physical-device builds.
 
-For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.plist` empty. A valid account configuration automatically selects the protected v3 Shape endpoint. Set `ApproovMessageSigning` to `YES` to enable installation signing and select v5. Signing requires a non-empty account configuration. Do not commit account-specific configuration or development overrides.
+For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.plist` empty. Obtain the account configuration with `approov sdk -getConfigString`. A valid account configuration automatically selects the protected v3 Shape endpoint. Set `ApproovMessageSigning` to `YES` to enable installation signing and select v5. Signing requires a non-empty account configuration. Do not commit account-specific configuration or development overrides.
 
 ## INITIALIZING APPROOV
 
@@ -72,6 +72,8 @@ let provider = MoyaProvider<MyService>(session: session)
 ```
 
 `startRequestsImmediately: false` lets Moya attach its handlers before starting a request, following [Moya's custom-session guidance](https://github.com/Moya/Moya/blob/master/docs/Providers.md). Keep using this provider for protected targets. See [Moya options](MOYA-OPTIONS.md) for session customization.
+
+Approov processes each request before Moya plugins run their `prepare` step. Declare headers that Approov must bind, substitute or sign in the target's `headers`, not in a plugin such as `AccessTokenPlugin`. See [Moya plugins and Approov](MOYA-OPTIONS.md#moya-plugins-and-approov).
 
 Moya can return `.success(Response)` for HTTP errors such as 401, 403 or 500. Check the status code and decode response bodies safely. The sample displays HTTP failures and malformed responses without force-unwrapping server-controlled JSON.
 

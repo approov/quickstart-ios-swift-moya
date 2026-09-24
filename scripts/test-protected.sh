@@ -12,6 +12,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 result_root=${RESULT_ROOT:-/private/tmp/moya-protected-$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$result_root"
+# simctl spawn needs a booted simulator.
+xcrun simctl bootstatus "$simulator" -b > /dev/null
 # Preserve any test environment that was already present on this simulator.
 old_config=$(xcrun simctl spawn "$simulator" launchctl getenv APPROOV_CONFIG || true)
 old_flag=$(xcrun simctl spawn "$simulator" launchctl getenv RUN_PROTECTED_LIVE_TESTS || true)
@@ -57,7 +59,7 @@ xcrun simctl spawn "$simulator" launchctl setenv RUN_PROTECTED_LIVE_TESTS 1
 python3 scripts/verify-dependencies.py "$derived_data"
 xcodebuild -quiet -project shapes-app/ApproovShapes.xcodeproj -scheme ApproovShapes \
   -destination "platform=iOS Simulator,id=$simulator" \
-  -derivedDataPath "$result_root/DerivedData" -clonedSourcePackagesDir "$derived_data/SourcePackages" \
+  -derivedDataPath "$result_root/DerivedData" -clonedSourcePackagesDirPath "$derived_data/SourcePackages" \
   -resultBundlePath "$result_root/Protected.xcresult" \
   -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- \
   -only-testing:ApproovShapesTests/ApproovShapesTests/testLiveProtectedV3AndSignedV5Endpoints test \

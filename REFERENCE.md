@@ -15,5 +15,6 @@ Corrections to the older quickstart reference:
 - `precheck()` is a development check. Do not add manual token caching or redundant prefetching to the request flow.
 - Manual `setDataHashInToken(data:)` and automatic `setBindingHeader(header:)` must not be mixed. Binding state persists for the process; use a header that is consistently present.
 - Message signing is configured explicitly in this release; see the [worked example](SHAPES-EXAMPLE.md#shapes-app-with-installation-message-signing).
+- With Alamofire 5.11 or later, `ApproovSession` processes a request before Moya plugin `prepare` methods run. Headers that binding, substitution or signing depend on must come from `TargetType.headers` or an adapter passed to `ApproovSession(interceptor:)`; see [Moya plugins and Approov](MOYA-OPTIONS.md#moya-plugins-and-approov).
 
 See [initialization and failure handling](README.md#initializing-approov) and [release validation](TESTING.md).

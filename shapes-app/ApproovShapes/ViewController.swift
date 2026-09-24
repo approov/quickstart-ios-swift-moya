@@ -29,14 +29,17 @@ class ViewController: UIViewController {
         do {
             provider = try ShapesNetworking.makeProvider()
         } catch {
-            render(ShapesPresentation(message: "Unable to create the network session.", imageName: "confused"))
+            render(Self.setupFailed)
         }
     }
+
+    private static let setupFailed = ShapesPresentation(
+        message: "Approov setup failed; networking is unavailable. Check ApproovConfig in Info.plist.", imageName: "confused")
 
     @IBAction func checkHello() { request(.Hello) }
     @IBAction func checkShape() {
         guard let target = ShapesNetworking.shapeTarget else {
-            render(ShapesPresentation(message: "Network setup failed. Check Approov configuration.", imageName: "confused"))
+            render(Self.setupFailed)
             return
         }
         request(target)
@@ -44,7 +47,7 @@ class ViewController: UIViewController {
 
     private func request(_ target: MyService) {
         guard let provider = provider else {
-            render(ShapesPresentation(message: "Network session unavailable.", imageName: "confused"))
+            render(Self.setupFailed)
             return
         }
         // A late response from an earlier tap must not replace the current result.
@@ -52,11 +55,20 @@ class ViewController: UIViewController {
         requestID = id
         currentRequest?.cancel()
         let message = target == .Hello ? "Checking connectivity..." :
-            (target == .Shape ? "Loading public demo (unprotected)..." : "Checking app authenticity...")
+            (ShapesNetworking.isProtected ? "Checking app authenticity..." : "Loading public demo (unprotected)...")
         render(ShapesPresentation(message: message,
                                   imageName: "approov"))
         currentRequest = provider.request(target, callbackQueue: .main) { [weak self] result in
             guard let self = self, self.requestID == id else { return }
+            // Keep diagnostics (such as an Approov rejection and its ARC) in the log, not the UI.
+            switch result {
+            case .failure(let error):
+                NSLog("Shapes request to %@ failed: %@", target.path, error.localizedDescription)
+            case .success(let response) where response.statusCode != 200:
+                NSLog("Shapes request to %@ returned HTTP %ld", target.path, response.statusCode)
+            case .success:
+                break
+            }
             self.render(ShapesPresentation.make(target: target, result: result))
         }
     }
