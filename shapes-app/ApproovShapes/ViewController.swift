@@ -20,34 +20,30 @@ import Moya
 class ViewController: UIViewController {
     @IBOutlet weak var statusImageView: UIImageView!
     @IBOutlet weak var statusTextView: UILabel!
+    // Retained for the view's lifetime: requests are cancelled if their provider is released.
     var provider: MoyaProvider<MyService>?
     private var currentRequest: Cancellable?
     private var requestID = UUID()
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Use the Approov-backed provider for every request that should be protected.
         do {
             provider = try ShapesNetworking.makeProvider()
         } catch {
-            render(Self.setupFailed)
+            render(Self.sessionUnavailable)
         }
     }
 
-    private static let setupFailed = ShapesPresentation(
-        message: "Approov setup failed; networking is unavailable. Check ApproovConfig in Info.plist.", imageName: "confused")
+    private static let sessionUnavailable = ShapesPresentation(message: "Unable to create the network session.",
+                                                               imageName: "confused")
 
     @IBAction func checkHello() { request(.Hello) }
-    @IBAction func checkShape() {
-        guard let target = ShapesNetworking.shapeTarget else {
-            render(Self.setupFailed)
-            return
-        }
-        request(target)
-    }
+    @IBAction func checkShape() { request(ShapesNetworking.shapeTarget) }
 
     private func request(_ target: MyService) {
         guard let provider = provider else {
-            render(Self.setupFailed)
+            render(Self.sessionUnavailable)
             return
         }
         // A late response from an earlier tap must not replace the current result.

@@ -12,10 +12,14 @@ struct ShapesPresentation: Equatable {
 
     static func make(target: MyService, result: Result<Response, MoyaError>) -> ShapesPresentation {
         switch result {
+        // An Approov error (for example, a rejected secret fetch) arrives here wrapped in
+        // MoyaError.underlying; see SECRETS-PROTECTION.md#handling-rejections to unwrap it.
         case .failure:
             return ShapesPresentation(message: "Request failed. Check connectivity and Approov configuration, then retry.",
                                       imageName: "confused")
         case .success(let response):
+            // Moya reports HTTP errors as success, so check the status. A backend that rejects a
+            // missing or invalid Approov token or signature typically answers with a 4xx status.
             guard response.statusCode == 200 else {
                 return ShapesPresentation(message: "HTTP \(response.statusCode): request was not accepted.", imageName: "confused")
             }

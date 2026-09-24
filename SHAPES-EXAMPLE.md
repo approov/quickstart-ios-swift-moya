@@ -65,7 +65,7 @@ Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's S
 approov sdk -getConfigString
 ```
 
-Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state, logs a correlation ID and device ID, and blocks provider creation if setup fails. An empty configuration is the explicit, unprotected tutorial mode.
+Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state and logs a correlation ID and device ID. If setup fails, the app keeps working: the Shape request is sent without an Approov token and the backend rejects it (see [fail-open behavior](README.md#fail-open-behavior)). The `APPROOV STEP` comments in `ShapesNetworking.swift` explain each part of the integration. An empty configuration is the explicit, unprotected tutorial mode.
 
 The sample already passes an `ApproovSession(startRequestsImmediately: false)` to its Moya provider. No import or provider code needs uncommenting.
 
@@ -122,7 +122,7 @@ This section shows how to add message signing as an additional layer of protecti
 
 1. Set `ApproovConfig` to the account SDK configuration and set the Boolean `ApproovMessageSigning` to `YES` in `Info.plist`.
 
-2. The app enables the signing mutator after successful initialization and automatically selects `https://shapes.approov.io/v5/shapes`. The helper `try ShapesNetworking.enableInstallationMessageSigning()` is also available for an explicit transition after initialization. It rejects bypass mode.
+2. The app enables the signing mutator after successful initialization and automatically selects `https://shapes.approov.io/v5/shapes`. Without an account configuration, signing stays off.
 
 3. Configure Approov to add the public message signing key to the Approov token. This key is used by the v5 endpoint to perform its message signature check.
 

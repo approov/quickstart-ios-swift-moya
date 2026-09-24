@@ -2,6 +2,7 @@ import XCTest
 import Alamofire
 import Moya
 import ApproovAFSession
+import Approov
 @testable import ApproovShapes
 
 final class ApproovShapesTests: XCTestCase {
@@ -11,24 +12,57 @@ final class ApproovShapesTests: XCTestCase {
         try XCTSkipIf(ApproovService.isApproovEnabled(), "Requires a bypass-mode process")
     }
 
-    func testFailedProtectedSetupBlocksProviderEvenAfterBypass() throws {
+    // Fail open: a failed setup keeps networking available and sends requests without
+    // Approov headers to the configured endpoint, where the backend rejects them.
+    func testFailedSetupStillSendsRequestsWithoutApproov() throws {
         try requireBypassProcess()
-        try ShapesNetworking.initialize(config: "")
-        defer { try? ShapesNetworking.initialize(config: "") }
-        XCTAssertThrowsError(try ShapesNetworking.initialize(config: "invalid-sdk-configuration"))
-        XCTAssertNil(ShapesNetworking.shapeTarget)
-        XCTAssertThrowsError(try ShapesNetworking.makeProvider())
+        ShapesNetworking.initialize(config: "invalid-sdk-configuration")
+        defer { ShapesNetworking.initialize(config: "") }
+        XCTAssertFalse(ShapesNetworking.isProtected)
+        XCTAssertEqual(ShapesNetworking.shapeTarget, .ProtectedShape)
+        let request = try capturedRequest(for: ShapesNetworking.shapeTarget)
+        XCTAssertEqual(request.url?.path, "/v3/shapes")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Approov-Token"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Signature"))
     }
 
-    func testSigningCannotBeEnabledInBypassMode() throws {
+    func testSigningWithoutConfigurationStaysUnprotected() throws {
         try requireBypassProcess()
-        try ShapesNetworking.initialize(config: "")
-        defer { try? ShapesNetworking.initialize(config: "") }
+        ShapesNetworking.initialize(config: "", messageSigning: true)
+        defer { ShapesNetworking.initialize(config: "") }
         XCTAssertEqual(ShapesNetworking.shapeTarget, .Shape)
-        XCTAssertThrowsError(try ShapesNetworking.enableInstallationMessageSigning())
-        XCTAssertThrowsError(try ShapesNetworking.initialize(config: "", messageSigning: true))
-        XCTAssertNil(ShapesNetworking.shapeTarget)
-        XCTAssertThrowsError(try ShapesNetworking.makeProvider())
+        XCTAssertFalse(ShapesNetworking.isProtected)
+        let request = try capturedRequest(for: ShapesNetworking.shapeTarget)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Signature"))
+    }
+
+    func testFailOpenMutatorSendsWithoutTokenButBlocksManInTheMiddle() throws {
+        let mutator = FailOpenMutator(base: ApproovServiceMutatorDefault.shared)
+        let url = "https://shapes.approov.io/v3/shapes"
+        for status in [ApproovTokenFetchStatus.noNetwork, .poorNetwork, .rejected, .notInitialized, .internalError] {
+            XCTAssertTrue(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(status), url: url), "\(status)")
+            XCTAssertFalse(try mutator.handleInterceptorHeaderSubstitutionResult(FakeTokenFetchResult(status), header: "Api-Key"))
+            XCTAssertFalse(try mutator.handleInterceptorQueryParamSubstitutionResult(FakeTokenFetchResult(status), queryKey: "key"))
+        }
+        XCTAssertThrowsError(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.mitmDetected), url: url))
+        XCTAssertThrowsError(try mutator.handleInterceptorHeaderSubstitutionResult(FakeTokenFetchResult(.mitmDetected), header: "Api-Key"))
+        XCTAssertThrowsError(try mutator.handleInterceptorQueryParamSubstitutionResult(FakeTokenFetchResult(.mitmDetected), queryKey: "key"))
+        XCTAssertTrue(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.success), url: url))
+        XCTAssertFalse(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.unknownURL), url: url))
+    }
+
+    // Sends a request through the app's provider and returns what reached the transport.
+    private func capturedRequest(for target: MyService) throws -> URLRequest {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CaptureProtocol.self]
+        let provider = try ShapesNetworking.makeProvider(configuration: configuration)
+        let completed = expectation(description: "captured \(target)")
+        var captured: URLRequest?
+        CaptureProtocol.onRequest = { captured = $0 }
+        defer { CaptureProtocol.onRequest = nil }
+        provider.request(target) { _ in completed.fulfill() }
+        wait(for: [completed], timeout: 5)
+        return try XCTUnwrap(captured, "The request did not leave the provider")
     }
 
     private func present(_ json: String, code: Int = 200, target: MyService = .Shape) -> ShapesPresentation {
@@ -122,7 +156,7 @@ final class ApproovShapesTests: XCTestCase {
 
     func testMoyaUsesApproovSessionAndBypassPreservesRequest() throws {
         try requireBypassProcess()
-        try ShapesNetworking.initialize(config: "")
+        ShapesNetworking.initialize(config: "")
         XCTAssertTrue(ApproovService.isInitialized())
         XCTAssertFalse(ApproovService.isApproovEnabled())
         let configuration = URLSessionConfiguration.ephemeral
@@ -151,7 +185,7 @@ final class ApproovShapesTests: XCTestCase {
     // plugin-added headers; TargetType headers and ApproovSession adapters are visible.
     func testApproovAdaptsBeforeMoyaPluginPrepare() throws {
         try requireBypassProcess()
-        try ShapesNetworking.initialize(config: "")
+        ShapesNetworking.initialize(config: "")
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CaptureProtocol.self]
         let probe = HeaderProbe()
@@ -173,7 +207,7 @@ final class ApproovShapesTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1" else {
             throw XCTSkip("Set RUN_LIVE_TESTS=1 to exercise the public Shapes API")
         }
-        try ShapesNetworking.initialize(config: "")
+        ShapesNetworking.initialize(config: "")
         let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
 
         for target in [MyService.Hello, .Shape] {
@@ -198,12 +232,18 @@ final class ApproovShapesTests: XCTestCase {
             throw XCTSkip("Set RUN_LIVE_TESTS=1 to verify protected endpoint rejection")
         }
         try requireBypassProcess()
-        try ShapesNetworking.initialize(config: "")
-        let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
+        // Bypass mode and a failed setup both send the request without a token; the backend rejects it.
+        for config in ["", "invalid-sdk-configuration"] {
+            ShapesNetworking.initialize(config: config)
+            let provider = try ShapesNetworking.makeProvider(configuration: .ephemeral)
+            for target in [MyService.ProtectedShape, .SignedShape] {
+                let response = try liveResponse(for: target, using: provider)
+                XCTAssertEqual(response.statusCode, 400, "\(target): \(responseBody(response))")
+                XCTAssertTrue(responseBody(response).lowercased().contains("approov token"), responseBody(response))
+            }
+        }
+        ShapesNetworking.initialize(config: "")
         for target in [MyService.ProtectedShape, .SignedShape] {
-            let response = try liveResponse(for: target, using: provider)
-            XCTAssertEqual(response.statusCode, 400, "\(target): \(responseBody(response))")
-            XCTAssertTrue(responseBody(response).lowercased().contains("approov token"), responseBody(response))
             var invalidRequest = try MoyaProvider<MyService>.defaultEndpointMapping(for: target).urlRequest()
             invalidRequest.setValue("invalid-test-token", forHTTPHeaderField: "Approov-Token")
             let invalidResponse = try rawResponse(for: invalidRequest)
@@ -222,7 +262,7 @@ final class ApproovShapesTests: XCTestCase {
         }
 
         // Upgrade the app process to protected mode and prove v3 token acceptance.
-        try ShapesNetworking.initialize(config: config)
+        ShapesNetworking.initialize(config: config)
         XCTAssertTrue(ApproovService.isApproovEnabled(), "The supplied config did not enable Approov")
         // Optional development key for simulators; it is held by the native SDK across re-initialization.
         if let devKey = ProcessInfo.processInfo.environment["APPROOV_DEV_KEY"], !devKey.isEmpty {
@@ -238,7 +278,7 @@ final class ApproovShapesTests: XCTestCase {
         XCTAssertEqual(unsignedV5Response.statusCode, 400,
                           "unsigned v5 response: \(responseBody(unsignedV5Response))")
         XCTAssertTrue(responseBody(unsignedV5Response).lowercased().contains("signature"), responseBody(unsignedV5Response))
-        try ShapesNetworking.initialize(config: config, messageSigning: true)
+        ShapesNetworking.initialize(config: config, messageSigning: true)
         XCTAssertEqual(ShapesNetworking.shapeTarget, .SignedShape)
         let signedResponse = try liveResponse(for: .SignedShape, using: protectedProvider)
         XCTAssertEqual(signedResponse.statusCode, 200, "v5 response: \(responseBody(signedResponse))")
@@ -298,6 +338,16 @@ private struct AuthorizationPlugin: PluginType {
         request.setValue("Bearer plugin-token", forHTTPHeaderField: "Authorization")
         return request
     }
+}
+
+// The SDK has no public initializer for results; override the status the mutator reads.
+private final class FakeTokenFetchResult: ApproovTokenFetchResult {
+    private let fakeStatus: ApproovTokenFetchStatus
+    init(_ status: ApproovTokenFetchStatus) {
+        fakeStatus = status
+        super.init()
+    }
+    override var status: ApproovTokenFetchStatus { fakeStatus }
 }
 
 // Runs in the same session interceptor as, and immediately before, the Approov adapter.

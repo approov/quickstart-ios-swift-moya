@@ -9,6 +9,17 @@
 
 Integrate Approov into a Swift iOS app using [Moya](https://github.com/Moya/Moya). Moya uses Alamofire underneath; the Approov Alamofire service provides token injection, dynamic pinning and optional secrets protection and message signing. Follow the [Shapes worked example](SHAPES-EXAMPLE.md) to exercise the integration with an Approov trial or paid account.
 
+The integration takes four steps. Each is marked with an `APPROOV STEP` comment in the sample, so you can copy the pattern into your own app:
+
+| Step | What to do | Where in the sample |
+| --- | --- | --- |
+| 1 | [Add the service dependency](#adding-approov-service-dependency) and `import ApproovAFSession` | `ShapesNetworking.swift` |
+| 2 | [Initialize Approov once at launch](#initializing-approov) with your account configuration | `ShapesNetworking.initialize`, called from `AppDelegate.swift` |
+| 3 | [Create each `MoyaProvider` with an `ApproovSession`](#using-moya-with-approov) | `ShapesNetworking.makeProvider`, used by `ViewController.swift` |
+| 4 | Optionally, enable [message signing, token binding](API-PROTECTION.md) or [secrets protection](SECRETS-PROTECTION.md) after initialization | `ShapesNetworking.initialize` |
+
+Your Moya `TargetType` definitions do not change; `MyService.swift` is an ordinary target.
+
 ## ADDING APPROOV SERVICE DEPENDENCY
 
 Use [Swift Package Manager](https://developer.apple.com/documentation/swift_packages/adding_package_dependencies_to_your_app) in **File → Add Package Dependencies**:
@@ -30,25 +41,22 @@ For the unprotected tutorial baseline, leave `ApproovConfig` in the app's `Info.
 
 ## INITIALIZING APPROOV
 
-Initialize once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`, before creating a provider. The sample implements this in `ShapesNetworking.initialize(config:messageSigning:)`. Failed setup leaves provider creation unavailable, even if an earlier service initialization left the SDK in bypass mode:
+Initialize once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`, before creating a provider. The sample implements this in `ShapesNetworking.initialize(config:messageSigning:)`. A failed initialization is logged and does not stop the app (see [fail-open behavior](#fail-open-behavior)):
 
 ```swift
 import ApproovAFSession
 
-let correlationID = UUID().uuidString
 do {
     try ApproovService.initialize(config: config)
-    if ApproovService.isInitialized() && ApproovService.isApproovEnabled() {
-        NSLog("Approov enabled; session=%@ device=%@", correlationID,
-              ApproovService.getDeviceID() ?? "unavailable")
+    if ApproovService.isApproovEnabled() {
+        NSLog("Approov enabled; device=%@", ApproovService.getDeviceID() ?? "unavailable")
+        // Apply optional settings (binding, substitution, signing, fail-open mutator) here.
     } else {
-        NSLog("Approov bypass mode; session=%@", correlationID)
+        NSLog("Approov bypass mode: requests are unprotected")
     }
 } catch {
-    NSLog("Approov initialization failed; session=%@", correlationID)
-    // Keep networking unavailable. Correct the configuration before retrying.
-    // Do not turn an invalid production configuration into unprotected requests.
-    return
+    // Keep going: requests are sent without Approov tokens and the backend rejects them.
+    NSLog("Approov initialization failed: %@", error.localizedDescription)
 }
 ```
 
@@ -56,18 +64,13 @@ An empty configuration initializes the service in bypass mode without initializi
 
 ## USING MOYA WITH APPROOV
 
-Retain a provider backed by an Approov session, and handle session creation failure:
+Retain a provider backed by an Approov session. Create it after `ApproovService.initialize(config:)` has been called:
 
 ```swift
 import Moya
 import ApproovAFSession
 
-// Run only after successful service or bypass initialization.
-guard ApproovService.isInitialized(),
-      let session = ApproovSession(startRequestsImmediately: false) else {
-    // Show a setup error and leave networking unavailable.
-    return
-}
+guard let session = ApproovSession(startRequestsImmediately: false) else { return }
 let provider = MoyaProvider<MyService>(session: session)
 ```
 
@@ -76,6 +79,31 @@ let provider = MoyaProvider<MyService>(session: session)
 Approov processes each request before Moya plugins run their `prepare` step. Declare headers that Approov must bind, substitute or sign in the target's `headers`, not in a plugin such as `AccessTokenPlugin`. See [Moya plugins and Approov](MOYA-OPTIONS.md#moya-plugins-and-approov).
 
 Moya can return `.success(Response)` for HTTP errors such as 401, 403 or 500. Check the status code and decode response bodies safely. The sample displays HTTP failures and malformed responses without force-unwrapping server-controlled JSON.
+
+## FAIL-OPEN BEHAVIOR
+
+Approov protection is enforced by your **backend**, which checks the Approov token (and, with message signing, the signature) on every request. The app therefore never needs to stop a request to be secure: a request without a valid token is simply refused by the backend. Blocking requests in the app adds no security, because an attacker can remove that check from a modified app, and it can make the app unusable when Approov cannot be reached.
+
+The sample is fail-open: every request leaves the device, and only a failed pin check stops one.
+
+| Situation | What the app sends | What the backend does |
+| --- | --- | --- |
+| Device passes attestation | Valid Approov token (and signature) | Serves the request |
+| Device fails attestation | A token that does not verify | Rejects the request |
+| Approov cloud unreachable (`noNetwork`, `poorNetwork`) or another token-fetch failure | No Approov token | Rejects protected requests |
+| Initialization failed (for example, an invalid configuration) | No Approov token; standard TLS validation only | Rejects protected requests |
+| A secret cannot be substituted | The placeholder, not the secret | Rejects the invalid API key |
+| **Pin check fails, or the SDK detects a man-in-the-middle** (`mitmDetected`) | **Nothing: the request is not sent** | – |
+
+Pinning stays fail-closed because a man-in-the-middle could read or change anything on the connection, including tokens, secrets and user data. Whenever Approov is enabled, the service checks the certificate of each API domain added to Approov against its Approov pins, in addition to standard TLS validation, and cancels the request on a mismatch.
+
+By default, service 3.5.6 does not send a request when it cannot fetch a token or substitute a secret; it returns a retryable `ApproovError` instead. The sample installs `FailOpenMutator` (in `ShapesNetworking.swift`) to send those requests. It delegates all other decisions, including a detected man-in-the-middle and message signing, to the standard mutator. Copy it into your app and install it once after initialization, wrapping the message-signing mutator if you use one:
+
+```swift
+ApproovService.setServiceMutator(FailOpenMutator(base: ApproovServiceMutatorDefault.shared))
+```
+
+Fail-open is only safe when the backend enforces Approov on every protected endpoint. Deploy the [backend token check](API-PROTECTION.md) first. A backend that accepts requests without a token would accept them from any client.
 
 ## CHECKING IT WORKS
 
