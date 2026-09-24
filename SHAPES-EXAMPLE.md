@@ -5,8 +5,8 @@ This quickstart is written specifically for native iOS apps that are written in 
 ## WHAT YOU WILL NEED
 * Access to a trial or paid Approov account
 * The `approov` command line tool [installed](https://approov.io/docs/latest/approov-installation/) with access to your account
-* [Xcode](https://developer.apple.com/xcode/) installed (version 16.4 is used in this guide)
-* An Apple mobile device or simulator with iOS 12 or higher
+* [Xcode](https://developer.apple.com/xcode/) installed (version 26.4 / Swift 6.4 is used for the checked-in dependency resolution)
+* An Apple mobile device or simulator with iOS 15 or higher
 * The contents of this repo
 
 ## MOYA FRAMEWORK
@@ -45,13 +45,7 @@ The subsequent steps of this guide show you how to provide better protection, ei
 
 ## ADD THE APPROOV SERVICE ALAMOFIRE
 
-The Approov integration is available via the [`Swift Package Manager`](https://developer.apple.com/documentation/swift_packages/adding_package_dependencies_to_your_app). This allows inclusion into the project by simply specifying a dependency in the `File -> Add Packages...` Xcode option if the project is selected:
-
-![Add Package Dependency](readme-images/add-package-repository.png)
-
-Enter the repository `https://github.com/approov/approov-service-alamofire.git` into the search box. You will then have to select the relevant version you wish to use. To do so, select the `Exact Version` option and the latest version available should be selected for you.
-
-Once you click `Add Package` the last screen will confirm the package product and target selection. The `approov-service-alamofire` and Approov SDK are now included as a dependency in your project. The `approov-service-alamofire` is actually an open source wrapper layer that allows you to easily use the Approov SDK itself with Alamofire.  This has a further dependency to the closed source [Approov SDK](https://github.com/approov/approov-ios-sdk).
+The sample project already includes the `approov-service-alamofire` **3.5.6** package, so you do not need to add it here. In your own app, add it as described in [adding the dependency](README.md#adding-approov-service-dependency). The package provides the `ApproovAFSession` module, which includes the `ApproovSession` networking class.
 
 ## ENSURE THE SHAPES API IS ADDED
 
@@ -65,32 +59,35 @@ Tokens for this domain will be automatically signed with the specific secret for
 
 ## MODIFY THE APP TO USE APPROOV
 
-Before using Approov you need to import the Alamofire Service. In the `ViewController.swift` source file uncomment the line to import the service module:
+The Approov integration for the app is in `ShapesNetworking.swift`, with each part explained by an `APPROOV STEP` comment. Three changes switch the app over to it.
 
-```swift
-// *** UNCOMMENT IF USING APPROOV
-import ApproovSession
+First, set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's configuration string. It is in your onboarding email, or you can get it with:
+
+```
+approov sdk -getConfigString
 ```
 
-Find the function definition for `viewDidLoad()` in the `ViewController.swift` source file. Uncomment the code below (and remember to comment the previous version):
+Do not commit the configured file.
+
+Next, initialize Approov at launch. In `AppDelegate.swift`, uncomment the three lines below the marker:
+
+```swift
+// *** UNCOMMENT THE 3 LINES BELOW TO USE APPROOV
+let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
+let signing = Bundle.main.object(forInfoDictionaryKey: "ApproovMessageSigning") as? Bool ?? false
+ShapesNetworking.initialize(config: config, messageSigning: signing)
+```
+
+Finally, make the Moya provider use Approov. In `ViewController.swift`, comment out the plain provider and uncomment the Approov one:
 
 ```swift
 // *** COMMENT OUT IF USING APPROOV
-//session = Session()
-
-// *** UNCOMMENT TO USE APPROOV
-session = ApproovSession()
-try! ApproovService.initialize(config: "<enter-you-config-string-here>")
+// provider = MoyaProvider<MyService>()
+// *** UNCOMMENT TO USE APPROOV: an Approov-backed provider for every protected request
+provider = try? ShapesNetworking.makeProvider()
 ```
 
-Replace `<enter-you-config-string-here>"` with the actual configuration string for your account. You will have received this in your Approov onboarding email (it will be something like `#12456#K/XPlLtfcwnWkzv99Wj5VmAxo4CrU267J1KlQyoz8Qo=`). The `ApproovSession` class adds the `Approov-Token` header and also applies pinning for the connections to ensure that no Man-in-the-Middle can eavesdrop on any communication being made.
-
-Lastly, make sure we are using the Approov protected endpoint for the shapes server, `https://shapes.approov.io/v3/shapes/`. Uncomment the line below (commenting out the previous definition):
-
-```swift
-            // *** UNCOMMENT TO USE APPROOV
-//            return "v3/shapes"
-```
+The provider is now backed by an `ApproovSession`, which adds the `Approov-Token` header and pins the connection so that no man-in-the-middle can eavesdrop on it. With a configuration set, the `Shape` button now uses the protected endpoint `https://shapes.approov.io/v3/shapes`, which requires a valid Approov token. If initialization fails, the app keeps working, but the request is sent without a token and the backend rejects it (see [failure handling](README.md#failure-handling)). The embedded API key belongs to the public Shapes demonstration; never embed your production API credentials this way.
 
 ## ADD YOUR SIGNING CERTIFICATE TO APPROOV
 
@@ -137,48 +134,31 @@ If you still don't get a valid shape then there are some things you can try. Rem
 
 ## SHAPES APP WITH INSTALLATION MESSAGE SIGNING
 
- This section shows how to add message signing as an additional layer of protection in addition to an Approov token.
+This section shows how to add message signing as an additional layer of protection in addition to an Approov token.
 
-1. Make sure we are using the `https://shapes.approov.io/v5/shapes/` endpoint of the shapes server. The v5 endpoint performs a message signature check in addition to the Approov token check. Find the following line in the `ViewController.swift`  source file and uncomment it to point to `v5` (commenting the previous definitions):
+1. Set `ApproovConfig` to the account SDK configuration and set the Boolean `ApproovMessageSigning` to `YES` in `Info.plist`.
 
-```swift
-//*** UNCOMMENT THE LINE BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-//            return "v5/shapes"
+2. The app enables the signing mutator after successful initialization and automatically selects `https://shapes.approov.io/v5/shapes`. Without an account configuration, signing stays off.
+
+3. Configure Approov to add the public message signing key to the Approov token. This key is used by the v5 endpoint to perform its message signature check.
+
+```shell
+approov policy -setInstallPubKey on
 ```
 
- 2. Uncomment the message signing setup code in `ViewController.swift`. This adds an interceptor extension to the ApproovService which adds the message signature to the request automatically.
+4. Build and run the app again and press the `Shape` button. You should see this (or another shape):
 
-```swift
-//*** UNCOMMENT THE LINES BELOW FOR APPROOV USING INSTALLATION MESSAGE SIGNING
-ApproovService.setApproovInterceptorExtensions(
-    ApproovDefaultMessageSigning().setDefaultFactory(
-        ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
-```
+<p>
+   <img src="readme-images/shape-approoved.png" width="256" title="Shape Approoved">
+</p>
 
- 3. Configure Approov to add the public message signing key to the approov token. This key is used by the v5 endpoint to perform its message signature check.
-
- ```shell
- approov policy -setInstallPubKey on
- ```
-
- 4. Build and run the app again and press the `Shape` button. You should see this (or another shape):
-
- <p>
-    <img src="readme-images/shape-approoved.png" width="256" title="Shape Approoved">
- </p>
-
- This indicates that in addition to the app obtaining a validly signed Approov token, the message also has a valid signature.
+This indicates that in addition to the app obtaining a validly signed Approov token, the message also has a valid signature.
 
 ## SHAPES APP WITH SECRETS PROTECTION
 
-This section provides an illustration of an alternative option for Approov protection if you are not able to modify the backend to add an Approov Token check. We are going to be using `https://shapes.approov.io/v1/shapes/` that simply checks for an API key. Change back the code so it points to `https://shapes.approov.io/v1/shapes/`.
+This section provides an illustration of an alternative option for Approov protection if you are not able to modify the backend to add an Approov Token check. We are going to be using `https://shapes.approov.io/v1/shapes` that simply checks for an API key. Keep `ApproovConfig` set and set `ApproovMessageSigning` to `NO`.
 
-```swift
-        case .Shape:
-            return "v1/shapes"
-```
-
-The `apiSecretKey` variable also needs to be changed as follows, removing the actual API key out of the code. Uncomment the line containing `"shapes_api_key_placeholder"` (commenting the previous definition):
+The `Api-Key` header in `MyService.swift` also needs to be changed as follows, removing the actual API key out of the code. Uncomment the line containing `"shapes_api_key_placeholder"` (commenting the previous definition):
 
 ```swift
 // *** COMMENT IF USING APPROOV SECRETS PROTECTION
@@ -195,14 +175,15 @@ approov secstrings -addKey shapes_api_key_placeholder -predefinedValue yXClypapW
 
 > Note that this command requires an [admin role](https://approov.io/docs/latest/approov-usage-documentation/#account-access-roles).
 
-Next we need to inform Approov that it needs to substitute the placeholder value for the real API key on the `Api-Key` header. Find the line below and uncomment it:
+Next we need to inform Approov that it needs to substitute the placeholder value for the real API key on the `Api-Key` header, and point the `Shape` button back at the v1 endpoint. In `ShapesNetworking.swift`, uncomment the two lines below the marker. They run only after successful protected initialization:
 
 ```swift
 // *** UNCOMMENT IF USING APPROOV SECRETS PROTECTION
 ApproovService.addSubstitutionHeader(header: "Api-Key", prefix: nil)
+shapeTarget = .Shape
 ```
 
-This processes the headers and replaces in the actual API key as required.
+This processes the headers and replaces in the actual API key as required. Substitution applies to headers declared in `MyService.headers`. It does not apply to headers added by a Moya plugin; see [Moya options](MOYA-OPTIONS.md#moya-plugins-and-approov).
 
 Build and run the app and press the `Shape` button. You should now see this (or another shape):
 
@@ -211,3 +192,7 @@ Build and run the app and press the `Shape` button. You should now see this (or 
 </p>
 
 This means that the app is able to access the API key, even though it is no longer embedded in the app code, and provide it to the shapes request.
+
+## RELEASE VALIDATION
+
+Before releasing your own app, complete the [pre-release checks](TESTING.md#before-you-release), including removing force-pass entries and development keys from your account.

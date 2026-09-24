@@ -38,7 +38,9 @@ ApproovService.addSubstitutionHeader(header: "your-header", prefix: nil)
 
 With this in place, network calls using `ApproovSession` should replace `your-secret-name` with `your-secret-value` as required when the app passes attestation. Since the mapping lookup is performed on the secret name you have the flexibility of providing different secrets on different API calls, even if they are passed with the same header name.
 
-You can see a [worked example](https://github.com/approov/quickstart-ios-swift-alamofire/blob/master/SHAPES-EXAMPLE.md#shapes-app-with-secrets-protection) for the Shapes app.
+With Moya, declare the header in the target's `headers` (or add it with an adapter passed to `ApproovSession(interceptor:)`). A placeholder in a header added by a Moya plugin is not substituted; see [Moya plugins and Approov](MOYA-OPTIONS.md#moya-plugins-and-approov).
+
+You can see a [worked example](SHAPES-EXAMPLE.md#shapes-app-with-secrets-protection) for the Shapes app.
 
 If the secret value is provided as a parameter in a URL query string with the name `your-param` then it is necessary to notify the `ApproovService` that the query parameter is subject to substitution. You do this by making the call once, after initialization:
 
@@ -56,7 +58,7 @@ In this case it is possible to make an explicit call at runtime to obtain the se
 ```swift
 var secret: String?
 do {
-    try secret = ApproovService.fetchSecureString(key: "your-secret-name", newDef: nil)
+    secret = try ApproovService.fetchSecureString(key: "your-secret-name", newDef: nil)
 } catch ApproovError.rejectionError(let message, let ARC, let rejectionReasons) {
     // failure due to the attestation being rejected, the ARC and rejectionReasons objects
     // contain additional information
@@ -77,7 +79,18 @@ do {
 > **IMPORTANT:** The secrets obtained should only ever be communicated externally from the app over channels using the Approov networking stack and which have been added as protected API domains. If not then it is possible for them to be intercepted by a Man-in-the-Middle (MitM) attack.
 
 ## HANDLING REJECTIONS
-If the app is not recognized as being valid by Approov then an `ApproovError` type exception is thrown from the network request and the API call is not completed. The secret value will never be communicated to the app in this case.
+If the app is not recognized as being valid by Approov then an `ApproovError` is returned from the network request and the API call is not completed. The secret value will never be communicated to the app in this case. With Moya, the error is wrapped as `MoyaError.underlying` containing an Alamofire `AFError.requestAdaptationFailed`:
+
+```swift
+import Alamofire
+
+provider.request(target) { result in
+    if case .failure(.underlying(let error, _)) = result,
+       case .rejectionError(_, let arc, let rejectionReasons)? = error.asAFError?.underlyingError as? ApproovError {
+        // show a message without revealing device details; log arc and rejectionReasons
+    }
+}
+```
 
 If the exception is of type `ApproovError.rejectionError` it contains an `ARC` value which should provide more information regarding a possible reason for the failure, as explained in [Attestation Response Code](https://approov.io/docs/latest/approov-usage-documentation/#attestation-response-code). It would be possible to provide more information about the status of the device without revealing any details to the user.
 
@@ -128,7 +141,7 @@ See [using a development key](https://approov.io/docs/latest/approov-usage-docum
 In some cases the value to be substituted on a header may be prefixed by some fixed string. A common case is the presence of `Bearer` included in an authorization header to indicate the use of a bearer token. In this case you can specify a prefix as follows:
 
 ```swift
-ApproovService.addSubstitutionHeader(header: "Authorization ", prefix: "Bearer")
+ApproovService.addSubstitutionHeader(header: "Authorization", prefix: "Bearer ")
 ```
 
 This causes the `Bearer` prefix to be stripped before doing the lookup for the substitution, and the `Bearer` prefix added to the actual secret value as part of the substitution.
@@ -136,7 +149,7 @@ This causes the `Bearer` prefix to be stripped before doing the lookup for the s
 ### App Instance Secure Strings
 In addition to secret values defined in the Approov cloud, it is also possible to get and set secure string values independently for each app instance. These are never communicated to the Approov cloud service, but are encrypted at rest using keys which can only be retrieved by passing apps. You can use this feature to protect user authorization tokens issued to individual apps or other sensitive customer data, for instance.
 
-App instance secure strings can be set and retrived using the [secret fetching code](#obtaining-the-secret-explicitly). You can define a new value for a given secret name by passing a value in the second parameter of `fetchSecureString`, rather than `nil`. An empty string may be used to delete the secure string completely.
+App instance secure strings can be set and retrieved using the [secret fetching code](#obtaining-the-secret-explicitly). You can define a new value for a given secret name by passing a value in the second parameter of `fetchSecureString`, rather than `nil`. An empty string may be used to delete the secure string completely.
 
 ### Prefetching
 If you wish to reduce the latency associated with substituting the first secret, then make this call immediately after initializing `ApproovService`:
