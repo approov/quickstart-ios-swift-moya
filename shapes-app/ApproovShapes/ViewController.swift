@@ -27,12 +27,10 @@ class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Use the Approov-backed provider for every request that should be protected.
-        do {
-            provider = try ShapesNetworking.makeProvider()
-        } catch {
-            render(Self.sessionUnavailable)
-        }
+        // *** COMMENT OUT IF USING APPROOV
+        provider = MoyaProvider<MyService>()
+        // *** UNCOMMENT TO USE APPROOV: an Approov-backed provider for every protected request
+        // provider = try? ShapesNetworking.makeProvider()
     }
 
     private static let sessionUnavailable = ShapesPresentation(message: "Unable to create the network session.",

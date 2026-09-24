@@ -21,14 +21,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Initialize Approov once, before a view can create a Moya provider.
-        // ApproovConfig in Info.plist holds the account configuration from `approov sdk -getConfigString`
-        // (leave it empty for the unprotected first step). Do not commit a real configuration.
-        let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
-        // ApproovMessageSigning (Boolean) enables installation message signing; it needs a configuration.
-        let signing = Bundle.main.object(forInfoDictionaryKey: "ApproovMessageSigning") as? Bool ?? false
+        // ApproovConfig in Info.plist holds the account configuration from `approov sdk -getConfigString`.
+        // Do not commit a real configuration. ApproovMessageSigning (Boolean) enables message signing.
         // A setup failure is logged and does not stop the app: requests are then sent without
         // Approov tokens and the protected backend rejects them.
-        ShapesNetworking.initialize(config: config, messageSigning: signing)
+
+        // *** UNCOMMENT THE 3 LINES BELOW TO USE APPROOV
+        // let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
+        // let signing = Bundle.main.object(forInfoDictionaryKey: "ApproovMessageSigning") as? Bool ?? false
+        // ShapesNetworking.initialize(config: config, messageSigning: signing)
         return true
     }
 }

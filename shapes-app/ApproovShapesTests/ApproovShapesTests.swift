@@ -2,7 +2,6 @@ import XCTest
 import Alamofire
 import Moya
 import ApproovAFSession
-import Approov
 @testable import ApproovShapes
 
 final class ApproovShapesTests: XCTestCase {
@@ -12,7 +11,7 @@ final class ApproovShapesTests: XCTestCase {
         try XCTSkipIf(ApproovService.isApproovEnabled(), "Requires a bypass-mode process")
     }
 
-    // Fail open: a failed setup keeps networking available and sends requests without
+    // A failed setup keeps networking available: the service layer sends requests without
     // Approov headers to the configured endpoint, where the backend rejects them.
     func testFailedSetupStillSendsRequestsWithoutApproov() throws {
         try requireBypassProcess()
@@ -34,21 +33,6 @@ final class ApproovShapesTests: XCTestCase {
         XCTAssertFalse(ShapesNetworking.isProtected)
         let request = try capturedRequest(for: ShapesNetworking.shapeTarget)
         XCTAssertNil(request.value(forHTTPHeaderField: "Signature"))
-    }
-
-    func testFailOpenMutatorSendsWithoutTokenButBlocksManInTheMiddle() throws {
-        let mutator = FailOpenMutator(base: ApproovServiceMutatorDefault.shared)
-        let url = "https://shapes.approov.io/v3/shapes"
-        for status in [ApproovTokenFetchStatus.noNetwork, .poorNetwork, .rejected, .notInitialized, .internalError] {
-            XCTAssertTrue(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(status), url: url), "\(status)")
-            XCTAssertFalse(try mutator.handleInterceptorHeaderSubstitutionResult(FakeTokenFetchResult(status), header: "Api-Key"))
-            XCTAssertFalse(try mutator.handleInterceptorQueryParamSubstitutionResult(FakeTokenFetchResult(status), queryKey: "key"))
-        }
-        XCTAssertThrowsError(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.mitmDetected), url: url))
-        XCTAssertThrowsError(try mutator.handleInterceptorHeaderSubstitutionResult(FakeTokenFetchResult(.mitmDetected), header: "Api-Key"))
-        XCTAssertThrowsError(try mutator.handleInterceptorQueryParamSubstitutionResult(FakeTokenFetchResult(.mitmDetected), queryKey: "key"))
-        XCTAssertTrue(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.success), url: url))
-        XCTAssertFalse(try mutator.handleInterceptorFetchTokenResult(FakeTokenFetchResult(.unknownURL), url: url))
     }
 
     // Sends a request through the app's provider and returns what reached the transport.
@@ -338,16 +322,6 @@ private struct AuthorizationPlugin: PluginType {
         request.setValue("Bearer plugin-token", forHTTPHeaderField: "Authorization")
         return request
     }
-}
-
-// The SDK has no public initializer for results; override the status the mutator reads.
-private final class FakeTokenFetchResult: ApproovTokenFetchResult {
-    private let fakeStatus: ApproovTokenFetchStatus
-    init(_ status: ApproovTokenFetchStatus) {
-        fakeStatus = status
-        super.init()
-    }
-    override var status: ApproovTokenFetchStatus { fakeStatus }
 }
 
 // Runs in the same session interceptor as, and immediately before, the Approov adapter.

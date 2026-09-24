@@ -45,7 +45,7 @@ The subsequent steps of this guide show you how to provide better protection, ei
 
 ## ADD THE APPROOV SERVICE ALAMOFIRE
 
-The sample already pins `approov-service-alamofire` **3.5.6** and Moya **15.0.3**. Do not add duplicate package references. The SwiftPM product and Swift import are `ApproovAFSession`; the networking class is `ApproovSession`. See [dependency setup](README.md#adding-approov-service-dependency) when integrating into another application.
+The sample project already includes the `approov-service-alamofire` **3.5.6** package, so you do not need to add it here. In your own app, add it as described in [adding the dependency](README.md#adding-approov-service-dependency). The package provides the `ApproovAFSession` module, which includes the `ApproovSession` networking class.
 
 ## ENSURE THE SHAPES API IS ADDED
 
@@ -59,19 +59,35 @@ Tokens for this domain will be automatically signed with the specific secret for
 
 ## MODIFY THE APP TO USE APPROOV
 
-Set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's SDK configuration string, obtained with:
+The Approov integration for the app is in `ShapesNetworking.swift`, with each part explained by an `APPROOV STEP` comment. Three changes switch the app over to it.
+
+First, set `ApproovConfig` in `shapes-app/ApproovShapes/Info.plist` to your account's configuration string. It is in your onboarding email, or you can get it with:
 
 ```
 approov sdk -getConfigString
 ```
 
-Do not commit the configured file. The app initializes Approov once in `AppDelegate.swift`; `ShapesNetworking.swift` checks the service state and logs a correlation ID and device ID. If setup fails, the app keeps working: the Shape request is sent without an Approov token and the backend rejects it (see [fail-open behavior](README.md#fail-open-behavior)). The `APPROOV STEP` comments in `ShapesNetworking.swift` explain each part of the integration. An empty configuration is the explicit, unprotected tutorial mode.
+Do not commit the configured file.
 
-The sample already passes an `ApproovSession(startRequestsImmediately: false)` to its Moya provider. No import or provider code needs uncommenting.
+Next, initialize Approov at launch. In `AppDelegate.swift`, uncomment the three lines below the marker:
 
-The sample defines separate `.Shape`, `.ProtectedShape` and `.SignedShape` targets. The Shape button automatically selects `.ProtectedShape` after successful account initialization. No source edit is required.
+```swift
+// *** UNCOMMENT THE 3 LINES BELOW TO USE APPROOV
+let config = Bundle.main.object(forInfoDictionaryKey: "ApproovConfig") as? String ?? ""
+let signing = Bundle.main.object(forInfoDictionaryKey: "ApproovMessageSigning") as? Bool ?? false
+ShapesNetworking.initialize(config: config, messageSigning: signing)
+```
 
-The v3 endpoint requires a valid Approov token. Leaving the v1 path selected tests only the public demo API key. The embedded key belongs to the public Shapes demonstration; never embed your production API credentials this way.
+Finally, make the Moya provider use Approov. In `ViewController.swift`, comment out the plain provider and uncomment the Approov one:
+
+```swift
+// *** COMMENT OUT IF USING APPROOV
+// provider = MoyaProvider<MyService>()
+// *** UNCOMMENT TO USE APPROOV: an Approov-backed provider for every protected request
+provider = try? ShapesNetworking.makeProvider()
+```
+
+The provider is now backed by an `ApproovSession`, which adds the `Approov-Token` header and pins the connection so that no man-in-the-middle can eavesdrop on it. With a configuration set, the `Shape` button now uses the protected endpoint `https://shapes.approov.io/v3/shapes`, which requires a valid Approov token. If initialization fails, the app keeps working, but the request is sent without a token and the backend rejects it (see [failure handling](README.md#failure-handling)). The embedded API key belongs to the public Shapes demonstration; never embed your production API credentials this way.
 
 ## ADD YOUR SIGNING CERTIFICATE TO APPROOV
 
@@ -179,4 +195,4 @@ This means that the app is able to access the API key, even though it is no long
 
 ## RELEASE VALIDATION
 
-Complete [TESTING.md](TESTING.md) before release. Remove force-pass rules and development keys from the test device/account before recording the production-policy result. The screenshots above illustrate the walkthrough; they are not evidence that the current dependency set passed device attestation.
+Before releasing your own app, complete the [pre-release checks](TESTING.md#before-you-release), including removing force-pass entries and development keys from your account.

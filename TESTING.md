@@ -1,18 +1,10 @@
-# Testing and release gates
+# Testing
 
-## Baseline
+The sample uses Approov Alamofire service **3.5.6**, Moya **15.0.3** and the Approov SDK **3.5.3**. The committed `Package.resolved` locks every transitive dependency. It is tested with Xcode 26.4 (CI) and Xcode 27.0.
 
-This quickstart consumes Approov Alamofire **3.5.6**, Moya **15.0.3** and native Approov SDK **3.5.3**. The committed Xcode `Package.resolved` records every transitive dependency. Local validation used Xcode **26.4 (17E192)** and iOS Simulator **26.4**, and was repeated on 2026-09-24 with Xcode **27.0 (27A266a)** and iOS Simulator **26.4**. Hosted CI uses Xcode **26.4.1 (17E202)** and iOS Simulator **26.4.1**; its dependency, test, Release-build and artifact-upload steps passed on 2026-09-16.
+## Run the tests
 
-The authoritative stable acceptance criteria are [core-service-layers-testing/TESTING_REQUIREMENTS.md at 1ea387b](https://github.com/approov/core-service-layers-testing/blob/1ea387b/TESTING_REQUIREMENTS.md), rechecked on 2026-09-16. There is no separate Moya or Alamofire requirements file in that revision. Moya consumes the Alamofire service; the general requirements therefore apply to that dependency as well as this integration. CI uses the iOS 26.4.1 runtime installed with its pinned Xcode 26.4.1 image; local commands below use the available iOS 26.4 runtime.
-
-The newer [feature/3.8.0 requirements](https://github.com/approov/core-service-layers-testing/blob/feature/3.8.0/TESTING_REQUIREMENTS.md) explicitly target the upcoming 3.8.x contract. Do not mix their status/header and signing defaults into validation of service 3.5.6. Recheck both the release and the applicable requirements commit before a release decision.
-
-## Run the quickstart regression suite
-
-After resolving packages, run `python3 scripts/verify-dependencies.py build` with the actual derived-data directory. It verifies every dependency revision against `Package.resolved` and rejects modified checkouts. CI runs this check before testing. A test against a patched package cache must be reported separately from a test against the published lockfile.
-
-Choose an available simulator using `xcrun simctl list devices available`, then run from the repository root:
+Choose a simulator with `xcrun simctl list devices available`, then run from the repository root:
 
 ```sh
 xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
@@ -22,30 +14,27 @@ xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
   -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- test
 ```
 
-Remove or rename an old result bundle before another run. Keep simulator ad-hoc signing enabled: `CODE_SIGNING_ALLOWED=NO` can build successfully but the simulator then refuses to load the unsigned Approov binary framework.
+Remove an old result bundle before running again. Keep simulator ad-hoc signing (`CODE_SIGN_IDENTITY=-`): with `CODE_SIGNING_ALLOWED=NO` the build succeeds, but the simulator refuses to load the unsigned Approov framework.
 
-Fifteen deterministic tests cover all four shapes, response and network errors, HTTPS target mapping, Moya session wiring, the order of Approov and Moya plugin processing, reading an `ApproovError` from a `MoyaError`, the fail-open decisions (requests are sent without a token when none can be fetched, but not after a detected man-in-the-middle), requests after a failed initialization, and signing without an account configuration. URLProtocol intercepts the wiring tests before transport: they verify session wiring and absence of protection headers, **not TLS or attestation**.
+The deterministic tests need no network or account. They cover response handling, Moya session wiring, the order of Approov and Moya plugin processing, and requests after a failed initialization (see [failure handling](README.md#failure-handling)). They intercept requests before they leave the device, so they do not test TLS, pinning or attestation.
 
-An opt-in live test sends both demo requests through Moya and `ApproovSession` and checks the public Shapes API response. Enable it only when network access is expected. `xcodebuild` forwards variables prefixed with `TEST_RUNNER_` to the test process, without the prefix:
+CI also runs `python3 scripts/verify-dependencies.py build` after resolving packages, which checks that every package checkout matches `Package.resolved` and has no local changes.
 
-```sh
-TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
-  -scheme ApproovShapes \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4' \
-  -derivedDataPath build-live -resultBundlePath LiveTestResults.xcresult \
-  -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- test
-```
+## Live tests
 
-Unprefixed variables such as `RUN_LIVE_TESTS=1 xcodebuild ...` are not forwarded. In Xcode, add the variable to the scheme's Test action instead.
+Opt-in tests call the Shapes backend through Moya and `ApproovSession`. `xcodebuild` passes variables prefixed with `TEST_RUNNER_` to the tests, without the prefix; unprefixed variables are not passed. In Xcode, set the variables in the scheme's Test action instead.
 
-Two additional opt-in tests cover the protected endpoints. One confirms that bypass-mode v3 and v5 requests are rejected. The other confirms that v3 accepts a valid Approov token, v5 rejects the same request without a message signature, and v5 accepts the installation-signed request. Set `RUN_LIVE_TESTS=1` for the rejection test. Set both `RUN_PROTECTED_LIVE_TESTS=1` and `APPROOV_CONFIG` for the protected test. The account must manage `shapes.approov.io`, include the installation public key in tokens, and pass the selected test device:
+- `RUN_LIVE_TESTS=1` checks the public v1 endpoints, and checks that v3 and v5 reject requests without a valid token, including after a failed initialization.
+- `RUN_PROTECTED_LIVE_TESTS=1` with `APPROOV_CONFIG` checks, against your account, that v3 accepts an Approov token, v5 rejects an unsigned or tampered request, and v5 accepts an installation-signed request.
+
+For the protected test, the account must manage the Shapes domain and include the installation public key in tokens:
 
 ```sh
 approov api -add shapes.approov.io
 approov policy -setInstallPubKey on
 ```
 
-A simulator cannot pass attestation on its own. Either add its device ID to force pass (see the helper script below) or supply an account [development key](https://approov.io/docs/latest/approov-usage-documentation/#using-a-development-key) in `APPROOV_DEV_KEY`, which the protected test applies after initialization. Approov configuration is process-wide and a protected process never returns to bypass mode, so bypass-only tests skip once the protected test has run. Test methods run in name order, so the full suite can run in one invocation:
+A simulator cannot pass attestation on its own. Supply an account [development key](https://approov.io/docs/latest/approov-usage-documentation/#using-a-development-key) in `APPROOV_DEV_KEY`, or [force the simulator's device ID to pass](https://approov.io/docs/latest/approov-usage-documentation/#forcing-a-device-id-to-pass); the app logs the device ID at startup. The commands below read the values without echoing or saving them (zsh syntax):
 
 ```sh
 read -rs "TEST_RUNNER_APPROOV_CONFIG?Approov config: " && export TEST_RUNNER_APPROOV_CONFIG
@@ -54,20 +43,14 @@ TEST_RUNNER_RUN_LIVE_TESTS=1 TEST_RUNNER_RUN_PROTECTED_LIVE_TESTS=1 \
 xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
   -scheme ApproovShapes \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4' \
-  -derivedDataPath build-protected -resultBundlePath ProtectedTestResults.xcresult \
+  -derivedDataPath build -resultBundlePath ProtectedTestResults.xcresult \
   -disableAutomaticPackageResolution CODE_SIGN_IDENTITY=- test
 unset TEST_RUNNER_APPROOV_CONFIG TEST_RUNNER_APPROOV_DEV_KEY
 ```
 
-The `read` syntax above is for zsh; in bash use `read -rsp "Approov config: " TEST_RUNNER_APPROOV_CONFIG`. Add `-only-testing:ApproovShapesTests/ApproovShapesTests/testLiveProtectedV3AndSignedV5Endpoints` to run only the protected test.
+Approov never returns a protected process to bypass mode, so the tests that need bypass mode skip once the protected test has run. Never commit a configuration or development key, and remove force-pass entries and development keys from the account after testing.
 
-Do not commit `APPROOV_CONFIG`, a development key or a force-pass override. Remove temporary account overrides after collecting the results.
-
-For a simulator run from an authenticated Approov terminal, `bash scripts/test-protected.sh SIMULATOR_UDID APPROOV_DEVICE_ID DERIVED_DATA` verifies the locked dependencies, temporarily adds that device to force pass if needed, runs only the protected test, and removes the entry it added. It restores the previous simulator test environment on exit. `DERIVED_DATA` must already contain the resolved packages; `RESULT_ROOT` optionally selects a fresh output directory. No account configuration is written to the repository. This helper is only for simulator integration testing, not production device attestation.
-
-The empty-config example intentionally starts in bypass mode against v1. The separate protected tests check backend rejection and acceptance; force-passed simulator results do not prove physical-device attestation. The negative checks require HTTP 400 and the expected proof-related response, so an outage or an unrelated HTTP error cannot count as a pass. They also exercise invalid tokens and a corrupted v5 signature.
-
-## Build Release for physical devices
+## Build Release for devices
 
 ```sh
 xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
@@ -76,48 +59,13 @@ xcodebuild -project shapes-app/ApproovShapes.xcodeproj \
   -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO build
 ```
 
-This checks compilation and linking only. Signing, archiving, device execution and distribution validation require your Apple signing configuration.
+This checks compilation and linking only.
 
-## Service-layer requirement regressions (internal test infrastructure)
+## Before you release
 
-The companion `approov-service-alamofire` change adds `MoyaServiceRequirementsTests.swift` to the service's existing mini-SDK target. It requires access to the private testing repository and is not included in the customer app or public quickstart CI.
+Simulator and development-key results do not prove attestation on real devices. Before releasing your app:
 
-To reproduce, use clean sibling checkouts of `approov-service-alamofire` and `core-service-layers-testing`, apply the companion service change to tag **3.5.6**, and check out testing commit `1ea387b`. Then run from the service directory:
-
-```sh
-APPROOV_USE_MINI_SDK=1 swift test
-```
-
-The complete local run contains 49 tests: 40 requirement regressions and nine existing initialization tests. All 49 pass with the companion service change. The new regressions cover initialization state, token and trace headers, exclusions, token-fetch decisions, binding, secure-string substitution, request mutators, RFC 9421 signing, content digests, long custom JWT payloads, trust-manager selection, dynamic pins, accept-any and excluded URLs, bypass behavior, and reset behavior.
-
-These are deterministic in-process checks against the mini SDK. They do not prove device attestation, backend enforcement, or real TLS pin validation. The quickstart remains pinned to the published 3.5.6 package until the service change is released. The 2026-09-15 protected run used a patched service checkout. The 2026-09-16 startup, public/invalid-token, physical-device and Release-archive checks used unmodified published packages, verified against the committed lockfile.
-
-On 2026-09-24, with Xcode 27.0 on an iOS 26.4 iPhone 17 Pro Max simulator and the unmodified locked packages, the complete suite of 18 tests ran with the live and protected tests enabled and a development key: 16 passed and the 2 bypass-only tests skipped as designed. This covered v3 token acceptance, unsigned and tampered v5 rejection, signed v5 acceptance, and rejection of requests sent in bypass mode, after a failed initialization, or with an invalid token. The app was also exercised manually on the simulator in bypass, invalid-configuration, v3, v5, secrets-protection and rejected-attestation modes; with an invalid configuration, Hello succeeded and the tokenless Shape request reached the backend and was rejected with HTTP 400. On 2026-09-16 the iPhone simulator suite passed 14 tests with the protected-account test skipped. The connected iPhone 16e (iOS 27.0 beta) passed all 12 deterministic tests with three live tests skipped. A development-signed Release archive passed strict code-signature verification and included the Approov and Alamofire privacy manifests. This does not constitute App Store distribution validation or attestation acceptance on the physical device.
-
-## Requirements coverage and remaining release gates
-
-| Requirement | Evidence / remaining work |
-| --- | --- |
-| §1 Initialization | Nine existing initialization tests plus reset and reinitialization regressions pass. Sample bypass wiring passes. Real SDK comment identity and signed-device startup remain to be validated. |
-| §2 Request processing | Mini-SDK regressions for artifacts, empty values, binding, protected/unprotected traffic, exclusions and status fallback pass. Backend request capture remains a device gate. |
-| §3 Mutators | Default and custom token/substitution decisions pass, including rejected-token skip and abort behavior. Wire-level server receipt remains a device gate. |
-| §4 Pinning | Trust-manager selection, dynamic pins, accept-any, exclusions and bypass configuration pass in process. Real valid/invalid TLS pins, pin updates, non-TLS challenges and shared-certificate host ordering remain device/network gates. |
-| §5 Signing | RFC 9421 headers, single-signature replacement, failure fallback and POST/PUT/PATCH body-digest policies pass deterministically. Valid/missing-signature v5 enforcement passed on a force-passed simulator on 2026-09-15; valid, missing and corrupted-signature v5 checks passed on a development-key simulator on 2026-09-24. Streamed-body behavior remains an external gate. |
-| §6 Secure strings / custom JWT | Valid/missing/empty/ranged substitutions and an 18 KB custom JWT payload pass. Real protected backend acceptance remains an external gate. |
-| §7 Public interface | Corrected module, initialization state, mutator API, reset behavior and removed-method guidance are covered by build or tests. |
-| §8 API / changelog accuracy | Quickstart points to the pinned public source/reference. Companion service patch records both behavior changes under Unreleased. |
-| §9 Documentation | Corrected imports, dependency requirements, initialization failure handling, Moya provider wiring, reference links and walkthrough file locations. Device screenshots still need refreshing after an actual protected run. |
-
-### Signed-device and backend checks
-
-Use a dedicated test account and record app commit, package lock, device/OS, signing identity, policy and result for each scenario. Do not put secrets or full tokens in the evidence report.
-
-1. Run the Hello and v1 demo steps. Confirm these are labeled unprotected and do not count as a protection pass.
-2. Configure the account and v3 endpoint. The guarded protected live test covers missing and valid proof. On a registered signed device without a development/force-pass override, also verify invalid, expired and replayed tokens are rejected by the backend.
-3. Run the pinning scenarios in §4, including invalid system trust in bypass mode and the two shared-certificate host orders. Capture server receipt/non-receipt and pin-check logs.
-4. Configure v5. The guarded protected live test covers missing and valid installation signatures. Also verify tampered signature rejection and exercise digest and signing-failure cases from §5.
-5. Run secrets protection with placeholders; verify backend acceptance after substitution and rejection/failure paths. Confirm real credentials are absent from the app binary.
-6. Exercise offline/poor network, cancellation, rapid taps, background/foreground recovery, and backend 401/403/429/5xx responses.
-7. Repeat on the oldest supported iOS version and a current physical device. Remove development keys/force-pass settings, build a signed Release archive, validate privacy manifests and App Store requirements, and refresh walkthrough screenshots.
-
-**Release decision:** the local quickstart fixes are reviewable, but production sign-off requires a published corrected service dependency and the outstanding protection/device evidence. Do not describe the passing simulator suite as full requirements compliance.
+1. Remove development keys and force-pass entries, and register your [app signing certificate](SHAPES-EXAMPLE.md#add-your-signing-certificate-to-approov).
+2. On a signed physical device, check that protected requests succeed and that your backend rejects requests with a missing, invalid or expired token (and a missing or tampered signature, if you use message signing).
+3. If you use secrets protection, check that substitution works and that the real secret is not in the app binary.
+4. Check behavior offline, on a poor network and with backend 4xx/5xx responses.

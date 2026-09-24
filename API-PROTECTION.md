@@ -53,7 +53,7 @@ This causes the public key to be included in any Approov tokens in the `ipk` cla
 
 If you are using the `ApproovSession` networking stack, then Approov can automatically generate and add the message signature. You should use this method whenever possible. You enable this by making the following call once, after initialization:
 
- ```swift
+```swift
 ApproovService.setServiceMutator(
     ApproovDefaultMessageSigning().setDefaultFactory(
         ApproovDefaultMessageSigning.generateDefaultSignatureParametersFactory()))
